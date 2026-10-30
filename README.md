@@ -9,6 +9,7 @@ A Flutter app for a multi-department clinic (Eye and Homeopathy today, more late
 ## Documentation
 
 - [Feature Specification](docs/FEATURES.md) — the source of truth for what the app does. Read this before writing code.
+- [Firebase Architecture](docs/FIREBASE_ARCHITECTURE.md) — collections, fields, security rules, Cloud Functions, offline strategy.
 
 ## Getting started
 

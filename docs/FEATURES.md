@@ -1,6 +1,6 @@
 # Clinic Management App — Feature Specification
 
-**Status:** Draft v3 — 30 Oct 2026. All requirement questions resolved; Eye prescription form design deferred to UI phase.
+**Status:** Draft v4 — 30 Oct 2026. All requirement questions resolved; Eye prescription form design deferred to UI phase. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
 **Project:** `ramzan` (Flutter). Clinic name is not hard-coded; Admin sets it in Settings and it appears on receipts and the app header.
 
 This document is the source of truth for what the app does. Code follows this document. Anything not written here is not a requirement yet.
@@ -25,16 +25,16 @@ Reception runs on the **web** at the front desk and must keep working **offline*
 | Branches | One clinic now. Data model carries a branch ID so branches can be added later. |
 | Platforms | Reception: web. Doctor and Admin: Android, iOS, web. |
 | Offline | Reception web must work offline and sync when internet returns. |
-| Backend | Firebase (Firestore, Auth, Storage, Cloud Functions). |
+| Backend | Firebase, Blaze plan, one project. Firestore, Auth, Storage, Cloud Functions, Hosting. Daily backup kept 30 days. |
 | Language | English only. |
 | Currency | PKR. |
 | Payment methods | Cash, bank transfer, JazzCash, Easypaisa. |
 | Partial payments | Not supported. Full payment at the visit. |
 | Login | Email and password. Admin creates every account. |
 | Roles per user | One user can hold multiple roles. |
-| Patient arrival | Walk-in and booked appointments. |
-| Patient lookup | Phone number search, printed patient ID. One phone can cover a family. |
-| Queue | Token number per doctor. Doctor sees a live waiting list. |
+| Patient arrival | Walk-in and booked appointments. Appointments have a date and a free-text time; no slot grid. |
+| Patient lookup | Phone number search, printed patient ID (format 26-00341, assigned on sync). One phone covers a family. A patient may also have a personal phone, can be moved to another family, and a family phone can be changed. |
+| Queue | Token per doctor with department prefix, e.g. E-12, H-5. Resets daily. Doctor sees only their own queue. |
 | Fee setup | Per doctor and per visit type. |
 | Follow-up | Separate reduced follow-up fee per doctor. |
 | Discounts | Reception can give any amount. Reason is required. Admin sees every discount. |
@@ -43,11 +43,11 @@ Reception runs on the **web** at the front desk and must keep working **offline*
 | Reports | Reception uploads reports the patient brings in. |
 | History visibility | Every doctor sees the patient's full history across all departments. |
 | Operations | Schedule a date, pre-op checklist (Admin and doctors maintain the default list), post-op follow-up reminders (default days per operation type, changeable per patient). |
-| Inventory | Homeo medicines, frames, lenses stocked by power (SPH/CYL), consumables. |
-| Doctor pay | Salary plus percentage of fees. Admin chooses per doctor whether the percentage applies to gross fee or net fee after discount. |
-| Analytics | Revenue, patient counts, discounts, expenses and net profit. |
+| Inventory | Homeo medicines, frames, lenses stocked by power (SPH/CYL), consumables. No batch or expiry tracking. Suppliers and purchase bills tracked; a purchase creates an expense. |
+| Doctor pay | Salary plus percentage of fees. Admin chooses per doctor whether the percentage applies to gross fee or net fee after discount. Payouts are for any date range Admin picks. |
+| Analytics | Revenue, patient counts, discounts, expenses and net profit. Read from daily summaries, updated within seconds of each transaction. Timezone Asia/Karachi. |
 | Patient reminders | WhatsApp via WhatsApp Web already open on the reception PC. App opens a pre-filled message, staff press send. No Business API. Admin can turn each reminder type on or off. |
-| Edit/delete visits | Admin only. |
+| Edit/delete visits | Admin only. Delete is a soft delete with a reason; the record stays visible to Admin. |
 | Old data | None. New clinic, start fresh. |
 | Reception devices | One reception device for now. Offline token conflicts between devices are not handled in v1. |
 | Doctor sees money | Yes. Doctor sees fee, discount, and net paid on each visit. |
@@ -91,11 +91,11 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - **Branch** — one record now. Every other record stores a `branchId`.
 - **Department** — name, active flag. Seeded with Eye and Homeopathy.
 - **Doctor** — linked to a user account, department, specialisation, salary, revenue share percentage, share basis (gross fee or net fee after discount), active flag.
-- **Visit Type** — global list: Checkup, Follow-up, Eye Test, and operation types such as Cataract Surgery, added by Admin. Each has a flag for whether it is an operation. Operation types also carry a default pre-op checklist and default post-op follow-up days (e.g. 1, 7, 30). Admin and doctors can edit these defaults.
+- **Visit Type** — belongs to one department. Each department has Checkup and Follow-up; Eye also has Eye Test; operation types such as Cataract Surgery, added by Admin. Each has a flag for whether it is an operation. Operation types also carry a default pre-op checklist and default post-op follow-up days (e.g. 1, 7, 30). Admin and doctors can edit these defaults.
 - **Fee Schedule** — one row per doctor per visit type: amount in PKR. Follow-up has its own reduced amount per doctor.
 - **Family** — a phone number that groups patients. Head of family name and address.
 - **Patient** — patient ID (auto, printed), name, age or date of birth, gender, phone (via family), address, notes, created date.
-- **Appointment** — patient, doctor, date, time slot, status (booked, arrived, cancelled, no-show).
+- **Appointment** — patient, doctor, date, free-text time, source (manual, follow-up, post-op), status (booked, arrived, cancelled, no-show), reminder sent marker.
 - **Visit** — patient, doctor, department, visit type, token number, date and time, fee, discount amount, discount reason, net paid, payment method, created by, status (waiting, in progress, completed). Immutable after save except by Admin.
 - **Prescription** — belongs to a visit. Typed fields and/or photo. Eye: SPH, CYL, AXIS, ADD, VA for right and left eye, plus free notes. Homeo: list of medicine, potency, dosage, duration, plus free notes. Printable.
 - **Report** — belongs to a patient, optionally to a visit. Title, file (PDF or image), uploaded by, date.
@@ -104,8 +104,10 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - **Lens Item** — a lens is an inventory item with extra fields: lens type (e.g. single vision, bifocal, progressive), material or brand, SPH, CYL. Stock is tracked per exact power combination. Selling a lens means choosing type and power; the app can pre-select the power from the patient's latest eye prescription.
 - **Stock Movement** — item, quantity in or out, reason (purchase, sale, used in operation, adjustment), linked visit if sold.
 - **Sale** — items sold to a patient, may or may not be linked to a visit. Total, discount, reason, payment method.
-- **Expense** — category (rent, salary, utilities, supplies, other), amount, date, note, recorded by.
-- **Doctor Payout** — period, salary, share earned, total, paid flag.
+- **Supplier** — name, phone, address.
+- **Purchase** — supplier, bill number, date, line items with quantity and unit cost, total. Creates stock movements and an expense.
+- **Expense** — category (rent, salary, utilities, supplies, purchase, payout, other), amount, date, note, source (manual, purchase, payout), recorded by.
+- **Doctor Payout** — any date range chosen by Admin, salary amount (prefilled with monthly salary, editable), share earned on gross or net basis, total, paid flag. Paid payouts create an expense.
 - **Settings** — clinic name, logo, address, phone, receipt footer, follow-up reminder days, token reset rule (daily per doctor), WhatsApp reminder toggles per type (appointment, follow-up, post-op), WhatsApp message templates.
 - **Audit Log** — who, what, when, before and after values. Written for every edit, delete, discount, fee change, and stock adjustment.
 - **User** — email, display name, roles (list), linked doctor ID if any, active flag.
@@ -132,13 +134,13 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 8. Print A4 receipt.
 
 ### 5.3 Appointments
-- Book a patient with a doctor on a date and time slot.
+- Book a patient with a doctor on a date, with an optional free-text time.
 - Today's appointments list, with an "Arrived" button that converts the appointment into a visit and issues a token.
 - Reschedule or cancel. Mark no-show.
 - Calendar view per doctor.
 
 ### 5.4 Queue management
-- Live waiting list per doctor for today, with token numbers and status.
+- Live waiting list per doctor for today, with token labels like E-12 and status.
 - Reception can see which doctor is free and how many are waiting.
 - Token numbers reset daily per doctor.
 
@@ -175,7 +177,7 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 ## 6. Doctor Features
 
 ### 6.1 Today's queue
-- Live list of waiting patients for this doctor, in token order.
+- Live list of waiting patients for this doctor only, in token order.
 - Tap to open. Status moves to in progress, then completed when the doctor finishes.
 
 ### 6.2 Patient history
@@ -230,13 +232,14 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 ### 7.5 Inventory
 - Add items with category, prices, unit, low-stock threshold.
 - Lenses: add stock per type and power (SPH/CYL). A grid view shows stock on hand across the power range for each lens type, with low-stock cells highlighted.
-- Stock in (purchase) and adjustments with reason.
+- Suppliers list. Purchases: pick supplier, enter bill number and line items; stock increases and an expense is created automatically.
+- Manual stock adjustments with reason.
 - Stock movement history per item.
 - Low-stock list.
 
 ### 7.6 Expenses and doctor payouts
 - Record expenses by category with date and note.
-- Doctor payout report per month: salary plus percentage of that doctor's fees, on gross or net basis as configured for that doctor. Mark as paid. Paid payouts become expenses automatically.
+- Doctor payout for any date range Admin picks: salary amount (prefilled, editable) plus percentage of that doctor's fees in the range, on gross or net basis as configured. Mark as paid. Paid payouts become expenses automatically.
 
 ### 7.7 Analytics and reports
 - Revenue by day, week, month, doctor, department, payment method.
