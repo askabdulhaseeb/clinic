@@ -1,6 +1,6 @@
 # Development Plan
 
-Draft v1 — 31 Oct 2026. Companion to [FEATURES.md](FEATURES.md) and [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md). This document fixes the technical choices for the Flutter code and the order in which features are built.
+Draft v2 — 31 Oct 2026. Companion to [FEATURES.md](FEATURES.md) and [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md). This document fixes the technical choices for the Flutter code and the order in which features are built.
 
 ---
 
@@ -13,13 +13,14 @@ Draft v1 — 31 Oct 2026. Companion to [FEATURES.md](FEATURES.md) and [FIREBASE_
 | Models | Plain Dart. Hand-written `fromMap`, `toMap`, `copyWith`. No `freezed`, no `build_runner` for models. |
 | Routing | `go_router`. URL paths on web, role-based redirect after login. |
 | UI | Material 3, teal primary. Eye accent blue, Homeo accent green. Screens designed while building, reviewed one by one. |
+| Theme details | Light + dark, follows system. Roboto (Flutter default). Density compact on desktop and desktop browsers, standard on phones (`VisualDensity.adaptivePlatformDensity`). Launcher name and browser title: **Clinic**. |
 | Build order | Admin setup first, then Reception visit flow, Doctor, Appointments, Inventory, Finance, hardening. |
-| Firebase project | Created by the owner in the console (Blaze). App connected with the FlutterFire CLI. |
+| Firebase project | `ramzan-clinic-web` (project number 662931473606), created by the owner. Android, iOS, web and Windows apps registered; `lib/firebase_options.dart` generated. Firestore, Auth and Storage still to be enabled in the console (asia-south1). |
 | Dev backend | Flutter app talks to the live Firebase project. Cloud Functions and rules are developed on the local Emulator Suite, then deployed. |
 | Automated tests | Full: unit tests (domain + view models), widget tests (every screen), integration tests (key flows). Firestore rules tests on the emulator. |
-| App identifier | `ramzan.shop.ramzan` for Android package and iOS bundle ID. Web app registered in the same Firebase project. |
+| App identifier | `ramzan.shop.ramzan` for Android package and iOS bundle ID. Android minSdk 23, iOS 15.0. |
 | Cloud Functions runtime | 2nd gen, TypeScript, Node 22 runtime (local Node 24 is fine for tooling). |
-| Version control | Not now. Owner may initialise git later. |
+| Version control | Git initialised by the owner on 31 Oct 2026, branch `main`. Commit at the end of each phase at least. |
 
 ---
 
@@ -155,6 +156,8 @@ Development:
 Each phase ends with: screens reviewed by the owner, unit + widget tests passing, integration test for the phase's main flow, rules updated and tested, functions deployed if changed. Phases map to feature folders above.
 
 ### Phase 0 — Project setup
+Status 31 Oct 2026: done except `firebase init` (functions, rules, emulators) which waits for Firestore to be enabled.
+
 - Rename app ID to `ramzan.shop.ramzan`, app name "Clinic".
 - Add packages, `flutterfire configure`, `firebase init`.
 - `core/`: theme, router skeleton, Firebase instances, Karachi date utils, money utils, search-key builder (unit-tested).
