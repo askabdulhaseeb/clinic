@@ -36,7 +36,7 @@
 | Firestore | All application data. Offline persistence enabled on reception web. |
 | Authentication | Email/password login, custom claims for roles. |
 | Cloud Storage | Report files, prescription photos, clinic logo. |
-| Cloud Functions (2nd gen, Node 20) | User management, patient number assignment, daily summaries, audit log, scheduled backup. |
+| Cloud Functions (2nd gen, TypeScript, Node 22) | User management, patient number assignment, daily summaries, audit log, scheduled backup. |
 | Hosting | Reception and Admin web app. |
 | App Check | Enabled for web and mobile to block requests from outside the app. |
 

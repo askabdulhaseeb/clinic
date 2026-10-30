@@ -279,6 +279,7 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - Firebase: Firestore (data, offline persistence), Auth, Storage (reports, prescription photos, logo), Cloud Functions (daily aggregates for analytics, scheduled reminder list generation), Hosting (web).
 - PDF generation in-app for receipts and prescriptions.
 - Clean architecture: domain, data, presentation layers per feature.
+- Technical choices (Provider, go_router, feature-first folders, testing, build phases): see [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md).
 
 ---
 

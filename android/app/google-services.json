@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "662931473606",
+    "project_id": "ramzan-clinic-web",
+    "storage_bucket": "ramzan-clinic-web.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:662931473606:android:8810e14b48a7a7e45f83c7",
+        "android_client_info": {
+          "package_name": "ramzan.shop.ramzan"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDzMr8xfMvtfvDcjvZoMpjIHHwpd1G2T7s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
