@@ -31,6 +31,7 @@ When a decision is made in conversation, write it into the relevant doc (decisio
 - Every write that must survive offline goes through a `WriteBatch` built in the repository.
 - Soft deletes only (`deleted`, `deletedAt`, `deletedBy`, `deleteReason`). Queries filter `deleted == false`.
 - Every business document carries `branchId` (default `main`).
+- Cost target: stay inside Firebase no-cost quotas at 500 visits a day. No full-collection reads in functions, no recompute loops, no photo uploads beyond reports. Check FIREBASE_ARCHITECTURE §11 before adding a listener, trigger or file upload.
 - One screen per file, snake_case files, PascalCase classes, no abbreviations except `vm`.
 
 ## Commands
@@ -49,7 +50,7 @@ Run `flutter analyze` and `flutter test` before saying a change is done.
 
 ## Firebase
 
-- Project `ramzan-clinic-web`, region `asia-south1`, Blaze plan. `lib/firebase_options.dart` is generated; do not hand-edit.
+- Project `ramzan-clinic-web`, Firestore and Functions in `asia-south1`, Storage bucket in `us-central1`, Blaze plan. `lib/firebase_options.dart` is generated; do not hand-edit.
 - The app talks to the live project in development. All tests use the local Emulator Suite, never live data.
 - Functions: 2nd gen, TypeScript, Node 22, in `functions/`. Build with `npm run build` there; `firebase deploy` runs it as a predeploy step.
 - Deploys (`firebase deploy ...`) are run by the owner, not by AI sessions.

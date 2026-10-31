@@ -1,6 +1,6 @@
 # Clinic Management App — Feature Specification
 
-**Status:** Draft v5 — 31 Oct 2026. All requirement questions resolved; Eye prescription form design deferred to UI phase. v5: removed token reset rule and post-op day pattern from Settings (both live on visit types or are fixed), prescriptions are Doctor-only. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
+**Status:** Draft v6 — 31 Oct 2026. All requirement questions resolved; Eye prescription form design deferred to UI phase. v6: budget decisions — prescriptions are typed only (no photos), no managed backup, dashboard totals kept by increments, Storage bucket in a US region for the no-cost quota. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
 **Project:** `ramzan` (Flutter). Clinic name is not hard-coded; Admin sets it in Settings and it appears on receipts and the app header.
 
 This document is the source of truth for what the app does. Code follows this document. Anything not written here is not a requirement yet.
@@ -25,7 +25,9 @@ Reception runs on the **web** at the front desk and must keep working **offline*
 | Branches | One clinic now. Data model carries a branch ID so branches can be added later. |
 | Platforms | Reception: web. Doctor and Admin: Android, iOS, web. |
 | Offline | Reception web must work offline and sync when internet returns. |
-| Backend | Firebase, Blaze plan, one project. Firestore, Auth, Storage, Cloud Functions, Hosting. Daily backup kept 30 days. |
+| Backend | Firebase, Blaze plan, one project. Firestore, Auth, Storage, Cloud Functions, Hosting. |
+| Cost target | Run inside Firebase no-cost quotas at up to 500 visits a day. Every design choice that costs reads, writes or storage is checked against this. See FIREBASE_ARCHITECTURE §11. |
+| Backup | No managed backup in v1. Firestore's built-in replication is relied on. Admin can export any report to CSV. Decided 31 Oct 2026. |
 | Language | English only. |
 | Currency | PKR. |
 | Payment methods | Cash, bank transfer, JazzCash, Easypaisa. |
@@ -39,7 +41,7 @@ Reception runs on the **web** at the front desk and must keep working **offline*
 | Follow-up | Separate reduced follow-up fee per doctor. |
 | Discounts | Reception can give any amount. Reason is required. Admin sees every discount. |
 | Receipts | A4 print. One copy by default; reception can change the copy count before printing. |
-| Prescriptions | Typed with structured fields, or photo of paper, or both. Doctor chooses per visit. |
+| Prescriptions | Typed with structured fields only. No photo of paper prescriptions (decided 31 Oct 2026 to stay inside free storage). |
 | Reports | Reception uploads reports the patient brings in. |
 | History visibility | Every doctor sees the patient's full history across all departments. |
 | Operations | Schedule a date, pre-op checklist (Admin and doctors maintain the default list), post-op follow-up reminders (default days per operation type, changeable per patient). |
@@ -97,7 +99,7 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - **Patient** — patient ID (auto, printed), name, age or date of birth, gender, phone (via family), address, notes, created date.
 - **Appointment** — patient, doctor, date, free-text time, source (manual, follow-up, post-op), status (booked, arrived, cancelled, no-show), reminder sent marker.
 - **Visit** — patient, doctor, department, visit type, token number, date and time, fee, discount amount, discount reason, net paid, payment method, created by, status (waiting, in progress, completed). Immutable after save except by Admin.
-- **Prescription** — belongs to a visit. Typed fields and/or photo. Eye: SPH, CYL, AXIS, ADD, VA for right and left eye, plus free notes. Homeo: list of medicine, potency, dosage, duration, plus free notes. Printable.
+- **Prescription** — belongs to a visit. Typed fields only. Eye: SPH, CYL, AXIS, ADD, VA for right and left eye, plus free notes. Homeo: list of medicine, potency, dosage, duration, plus free notes. Printable.
 - **Report** — belongs to a patient, optionally to a visit. Title, file (PDF or image), uploaded by, date.
 - **Operation** — linked to a visit of an operation type. Scheduled date, surgeon, pre-op checklist items copied from the type's default with done flags (extra items can be added for this patient), post-op follow-up days copied from the type's default and editable for this patient, status.
 - **Inventory Item** — category (medicine, frame, lens, consumable), name, unit, purchase price, sale price, stock on hand, low-stock threshold. Frames and lenses are separate items; a glasses sale is a frame line plus one or two lens lines.
@@ -187,10 +189,9 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - Operations and their status.
 
 ### 6.3 Prescription and notes
-- Per visit the doctor chooses typed, photo, or both.
-- Eye typed form: right and left eye SPH, CYL, AXIS, ADD, VA. Diagnosis and advice as free text.
-- Homeo typed form: rows of medicine, potency, dosage, duration. Diagnosis and advice as free text.
-- Photo: capture or upload an image of the paper prescription.
+- Prescriptions are typed. There is no photo mode.
+- Eye form: right and left eye SPH, CYL, AXIS, ADD, VA. Diagnosis and advice as free text.
+- Homeo form: rows of medicine, potency, dosage, duration. Diagnosis and advice as free text.
 - Print prescription on A4 with clinic header.
 - Set a follow-up date. This creates an appointment suggestion visible to reception and, if Admin has enabled it, a pending WhatsApp reminder.
 
@@ -275,7 +276,7 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 ## 9. Platform and Technology
 
 - Flutter for web, Android, iOS. One codebase.
-- Firebase: Firestore (data, offline persistence), Auth, Storage (reports, prescription photos, logo), Cloud Functions (daily aggregates for analytics, scheduled reminder list generation), Hosting (web).
+- Firebase: Firestore (data, offline persistence), Auth, Storage (reports, logo), Cloud Functions (user management, patient numbers, incremental daily totals, audit log), Hosting (web).
 - PDF generation in-app for receipts and prescriptions.
 - Clean architecture: domain, data, presentation layers per feature.
 - Technical choices (Provider, go_router, feature-first folders, testing, build phases): see [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md).
@@ -291,6 +292,8 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - Patient-facing app or online booking by patients.
 - Lab integration or in-house test machines.
 - Accounting export to external software.
+- Photo prescriptions (paper prescription captured by camera).
+- Managed database backups.
 
 ---
 

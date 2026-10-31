@@ -13,7 +13,7 @@
 | Breakpoints | Width < 600: mobile shell. 600–1023: sidebar collapsed to icons (navigation rail). ≥ 1024: full sidebar with labels. One codebase, one widget tree, layout switches on width. |
 | Theme | Material 3, teal seed (`AppColors.seed`). Eye accent blue, Homeo accent green, other departments purple. Light and dark follow the system. Roboto. |
 | Density | `VisualDensity.adaptivePlatformDensity`: compact on desktop and desktop browsers, standard on phones. |
-| Eye prescription form | Table: rows OD (right) and OS (left), columns SPH, CYL, AXIS, ADD, VA. Diagnosis and advice below. |
+| Eye prescription form | Table: rows OD (right) and OS (left), columns SPH, CYL, AXIS, ADD, VA. Diagnosis and advice below. Typed only, no photo mode. |
 | Homeo prescription form | Repeating rows: medicine, potency, dosage, duration, with add and remove row. Diagnosis and advice below. |
 | Lists | `DataTable`-style tables on desktop, `ListTile` cards on phones. Same data, same view model. |
 | Forms | One column on phones, two columns on desktop where fields are short. Save button fixed at the bottom. Validation on submit, inline errors. |
@@ -190,7 +190,7 @@ List of waiting visits in token order with a large token chip, patient name, age
 ### 4.6 Consultation (Doctor)
 Patient header: name, age, gender, patient ID, phone, token, visit type, fee / discount / net. Tabs: Prescription, History, Reports, Operation. Bottom bar: Follow-up date, Print Rx, Complete.
 
-**Eye prescription (typed):**
+**Eye prescription:**
 
 ```
             SPH       CYL       AXIS      ADD       VA
@@ -199,13 +199,11 @@ OS (L)   [ -1.00 ]  [ -0.75 ]  [  85  ]  [ +1.00 ]  [ 6/9 ]
 
 Diagnosis  [                                              ]
 Advice     [                                              ]
-
-Mode: (Typed) (Photo) (Both)          [ Add photo ]
 ```
 
 Field rules: SPH and CYL in 0.25 steps with sign, AXIS 0–180 integer, ADD positive in 0.25 steps, VA free text (e.g. `6/6`, `6/9`, `CF`). On phones the table scrolls horizontally; the row labels stay fixed.
 
-**Homeo prescription (typed):**
+**Homeo prescription:**
 
 ```
 Medicine            Potency   Dosage          Duration
@@ -260,7 +258,7 @@ Both are A4 portrait PDFs generated with `pdf` and shown with `printing`.
 
 **Receipt:** clinic header (logo, name, address, phone), receipt number (visit ID short), date and time, patient block (name, patient ID, phone), visit block (doctor, department, visit type, token in large type), amounts table (fee, discount with reason, net, payment method and reference), items sold table if any, footer text. Copies printed as repeated pages.
 
-**Prescription:** same clinic header plus doctor name and specialisation, patient block, Eye table or Homeo rows, diagnosis, advice, follow-up date, doctor signature line. Photo mode places the image full width under the header.
+**Prescription:** same clinic header plus doctor name and specialisation, patient block, Eye table or Homeo rows, diagnosis, advice, follow-up date, doctor signature line.
 
 ---
 

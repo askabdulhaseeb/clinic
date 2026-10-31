@@ -1,6 +1,6 @@
 # Development Plan
 
-Draft v3 — 31 Oct 2026. v3: integration tests fixed on the Firestore emulator (open point 1 closed). Companion to [FEATURES.md](FEATURES.md) and [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md). This document fixes the technical choices for the Flutter code and the order in which features are built.
+Draft v4 — 31 Oct 2026. v4: budget decisions (Storage bucket us-central1, no backup, typed-only prescriptions, incremental summaries) applied to phases and setup steps. Companion to [FEATURES.md](FEATURES.md) and [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md). This document fixes the technical choices for the Flutter code and the order in which features are built.
 
 ---
 
@@ -15,7 +15,8 @@ Draft v3 — 31 Oct 2026. v3: integration tests fixed on the Firestore emulator 
 | UI | Material 3, teal primary. Eye accent blue, Homeo accent green. Shells, navigation and form layouts in [UI_DESIGN.md](UI_DESIGN.md); screens reviewed one by one while building. |
 | Theme details | Light + dark, follows system. Roboto (Flutter default). Density compact on desktop and desktop browsers, standard on phones (`VisualDensity.adaptivePlatformDensity`). Launcher name and browser title: **Clinic**. |
 | Build order | Admin setup first, then Reception visit flow, Doctor, Appointments, Inventory, Finance, hardening. |
-| Firebase project | `ramzan-clinic-web` (project number 662931473606), created by the owner. Android, iOS, web and Windows apps registered; `lib/firebase_options.dart` generated. Firestore, Auth (Email/Password) and Blaze enabled on 31 Oct 2026. Storage bucket `ramzan-clinic-web.firebasestorage.app` is configured in the SDK; its existence is confirmed by the first `firebase deploy --only storage`. |
+| Firebase project | `ramzan-clinic-web` (project number 662931473606), created by the owner. Android, iOS, web and Windows apps registered; `lib/firebase_options.dart` generated. Firestore, Auth (Email/Password) and Blaze enabled on 31 Oct 2026. Storage bucket not yet created: it must be created in **us-central1** (no-cost quota), not Mumbai. |
+| Cost | Stay inside Blaze no-cost quotas at 500 visits a day (FIREBASE_ARCHITECTURE §11). No photo prescriptions, no managed backup, summaries by increments. |
 | Dev backend | Flutter app talks to the live Firebase project during development. Cloud Functions and rules are developed on the local Emulator Suite, then deployed. |
 | Test backend | All integration, rules and functions tests run against the local Firestore Emulator Suite with seed data. Tests never touch the live project. No second Firebase project. |
 | Automated tests | Full: unit tests (domain + view models), widget tests (every screen), integration tests (key flows). Firestore rules tests on the emulator. |
@@ -45,7 +46,7 @@ Do these in the Firebase console, then share the project ID.
 2. **Upgrade to Blaze** (Settings → Usage and billing). Attach a billing account. Functions 2nd gen and scheduled backups need it.
 3. **Firestore**: Build → Firestore Database → Create database → location `asia-south1` → production mode.
 4. **Authentication**: Build → Authentication → Get started → enable **Email/Password**.
-5. **Storage**: Build → Storage → Get started → location `asia-south1` → production mode.
+5. **Storage**: Build → Storage → Get started → location **`us-central1`** (the no-cost quota applies only to US buckets) → production mode. Still to do as of 31 Oct 2026.
 6. Share the **project ID** (Project settings → General).
 
 Then on this machine:
@@ -92,7 +93,7 @@ lib/
 functions/                      # TypeScript Cloud Functions (see FIREBASE_ARCHITECTURE §5)
   src/
     index.ts
-    users.ts  patients.ts  summaries.ts  audit.ts  families.ts  backup.ts
+    users.ts  patients.ts  summaries.ts  audit.ts  families.ts
   test/
 firestore.rules
 firestore.indexes.json
@@ -134,7 +135,7 @@ Runtime:
 | `intl` | Date and PKR formatting |
 | `pdf`, `printing` | A4 receipt and prescription PDF, print dialog on web |
 | `url_launcher` | `wa.me` WhatsApp links |
-| `image_picker`, `flutter_image_compress` | Prescription photos, resize to 1600 px |
+| `image_picker`, `flutter_image_compress` | Report photos captured by camera, resize to 1200 px / quality 80 |
 | `file_picker` | Report uploads on web and mobile |
 | `cached_network_image` | Report and photo display |
 | `shared_preferences` | Per-device preferences (last department filter, etc.) |
@@ -191,7 +192,7 @@ Status 31 Oct 2026: Firebase init done by hand (same files `firebase init` write
 
 ### Phase 5 — Doctor
 - Own queue, patient history across departments.
-- Prescription: typed (Eye SPH/CYL/AXIS/ADD/VA per eye, Homeo medicine/potency/dosage/duration), photo, both. Prescription PDF.
+- Prescription: typed only (Eye SPH/CYL/AXIS/ADD/VA per eye, Homeo medicine/potency/dosage/duration). Prescription PDF.
 - Reports upload (Reception) and view (Doctor).
 - Operations: record, checklist with override reason, post-op days → appointments created.
 - Doctor personal summary.
@@ -208,13 +209,13 @@ Status 31 Oct 2026: Firebase init done by hand (same files `firebase init` write
 
 ### Phase 8 — Finance and analytics
 - Expenses (manual), payouts (date range, salary prefilled, share by basis).
-- `recomputeDailySummary` function, dashboard reading `dailySummaries` only.
+- `applyDailySummaryDelta` function (increments, idempotent via `summaryEvents` with TTL), `recomputeDay` repair callable, dashboard reading `dailySummaries` only.
 - Date-range reports, discounts by user/reason, department and doctor breakdown, CSV export.
 - Visit corrections and soft delete (Admin).
 
 ### Phase 9 — Hardening and release
 - Audit log functions and Admin viewer.
-- App Check, daily backup function, composite indexes deployed.
+- App Check, composite indexes deployed, Firestore TTL policy on `summaryEvents.expiresAt`.
 - Hosting deploy for web, Android release build, iOS build.
 - Final full test run.
 
@@ -224,7 +225,7 @@ Status 31 Oct 2026: Firebase init done by hand (same files `firebase init` write
 
 | Level | What | Tools | Where it runs |
 |---|---|---|---|
-| Unit | Use cases, view models, utils (fee math, token, patient number, search keys, Karachi dates, summaries) | `flutter_test`, `mocktail` | Local, no Firebase |
+| Unit | Use cases, view models, utils (fee math, token, patient number, search keys, Karachi dates, summary deltas) | `flutter_test`, `mocktail` | Local, no Firebase |
 | Data | Repositories against in-memory Firestore | `fake_cloud_firestore` | Local |
 | Widget | Every screen with mocked view models: renders, validation, role visibility | `flutter_test` | Local |
 | Integration | Login → create visit → print receipt; offline visit creation; doctor prescription; sale | `integration_test` on Chrome and Android emulator | Firestore **emulator** with seed data |

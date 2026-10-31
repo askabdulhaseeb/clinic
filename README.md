@@ -3,6 +3,7 @@
 A Flutter app for a multi-department clinic (Eye and Homeopathy today, more later) with three roles: Reception, Doctor, and Admin.
 
 - Reception works on the web at the front desk and keeps working offline.
+- Designed to run inside Firebase free quotas at up to 500 visits a day.
 - Doctors and Admin use the mobile app (Android, iOS) or the web.
 - Backend is Firebase.
 

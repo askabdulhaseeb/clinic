@@ -1,6 +1,6 @@
 # Firebase Architecture
 
-**Status:** Draft v2 — 31 Oct 2026. v2: prescriptions writable by Doctor only (matches FEATURES §3).
+**Status:** Draft v3 — 31 Oct 2026. v3: budget decisions — summaries kept by increments (no recompute), no backup, Storage bucket in us-central1, no prescription photos, cost table for 500 visits a day.
 **Companion to:** [FEATURES.md](FEATURES.md). Feature behaviour is defined there; this document defines how it is stored and secured.
 
 ---
@@ -10,7 +10,7 @@
 | Topic | Decision |
 |---|---|
 | Firebase project | One new project, Blaze plan. No separate dev project; test data is created and cleaned by hand before go-live. |
-| Region | `asia-south1` (Mumbai) for Firestore, Storage, and Functions. Closest region to Pakistan. |
+| Region | `asia-south1` (Mumbai) for Firestore and Functions, closest region to Pakistan. Storage bucket in `us-central1`, because Firebase's no-cost Storage quota (5 GB stored, 100 GB download a month) applies only to US buckets. |
 | Structure | Top-level collections. Every record carries `branchId`. One branch document exists today. |
 | Auth | Firebase Auth, email and password. Roles stored in custom claims and mirrored in the user document. Admin creates users through a Cloud Function. |
 | Patient ID | `YY-NNNNN`, e.g. `26-00341`. Assigned by a Cloud Function on sync. Offline, a temporary ID `T-XXXXX` is shown. |
@@ -18,13 +18,13 @@
 | Visit types | Each belongs to one department. |
 | Appointments | Date plus free-text time. No slot grid, no working hours. |
 | Deletes | Soft delete with reason. `deleted: true` hides the record from lists and totals. |
-| Dashboard | Reads only `dailySummaries`, which a Cloud Function recomputes whenever a visit, sale, or expense for that day changes. |
+| Dashboard | Reads only `dailySummaries`. A Cloud Function applies the difference of every visit, sale, expense or patient write to that day's summary with `FieldValue.increment`. No reads, no recompute. An Admin "Recompute day" button repairs a single day if a total ever drifts. |
 | Inventory | No batch or expiry tracking. Suppliers and purchase bills are tracked; a purchase creates an expense. |
 | Payouts | Admin chooses any date range. Payout = salary amount entered by Admin (prefilled with monthly salary) plus share of fees in the range. |
 | Family rules | Patient may have a personal phone. Patient can be moved between families. Family phone can be changed. |
 | Queue | Doctor sees only their own queue. |
 | Timezone | Asia/Karachi for day boundaries. |
-| Backup | Daily Firestore export at 02:00 Karachi to a Cloud Storage bucket, 30-day retention. |
+| Backup | None in v1 (owner decision 31 Oct 2026, cost). Firestore replicates data across zones; the risk accepted is accidental bulk deletion or corruption by the app, which soft deletes and Admin-only edits mitigate. Point-in-time recovery or a monthly export can be enabled later without code changes. |
 | Reminders | No reminders collection. The "due today" list is a query over appointments. Sent state is stored on the appointment. |
 
 ---
@@ -35,8 +35,8 @@
 |---|---|
 | Firestore | All application data. Offline persistence enabled on reception web. |
 | Authentication | Email/password login, custom claims for roles. |
-| Cloud Storage | Report files, prescription photos, clinic logo. |
-| Cloud Functions (2nd gen, TypeScript, Node 22) | User management, patient number assignment, daily summaries, audit log, scheduled backup. |
+| Cloud Storage | Report files and the clinic logo. Bucket in `us-central1` for the no-cost quota. |
+| Cloud Functions (2nd gen, TypeScript, Node 22) | User management, patient number assignment, incremental daily summaries, audit log. |
 | Hosting | Reception and Admin web app. |
 | App Check | Enabled for web and mobile to block requests from outside the app. |
 
@@ -152,6 +152,7 @@ doctorId, doctorName, departmentId, departmentCode,
 visitTypeId, visitTypeName, isOperation, isFollowUp,
 token: 12, tokenLabel: "E-12",
 date ("YYYY-MM-DD"), createdAt, createdAtLocal,
+isFirstVisit,                            // true when the patient had visitCount 0 at creation; feeds newPatients
 fee, discountAmount, discountReason, netAmount,
 paymentMethod: "cash" | "bank" | "jazzcash" | "easypaisa", paymentRef,
 status: "waiting" | "inProgress" | "completed",
@@ -166,14 +167,12 @@ Visits are written by reception and only edited by Admin, except `status`, `star
 **Token generation (client):** query the local cache for `visits` where `doctorId == X and date == today`, take `max(token) + 1`, label with `departmentCode`. Single reception device, so no conflict handling in v1.
 
 ### 4.12 `prescriptions/{visitId}`
-ID equals the visit ID. Separate from the visit so doctor writes never collide with reception writes.
+ID equals the visit ID. Separate from the visit so doctor writes never collide with reception writes. Typed only; there is no photo mode.
 ```
 visitId, patientId, doctorId, departmentId, date,
-mode: "typed" | "photo" | "both",
 eye: { od: { sph, cyl, axis, add, va }, os: { sph, cyl, axis, add, va } },  // Eye only
 homeo: [ { medicine, potency, dosage, duration } ],                          // Homeo only
 diagnosis, advice,
-photoPaths: [ "patients/{patientId}/prescriptions/{visitId}/1.jpg" ],
 followUpDate (nullable), followUpAppointmentId (nullable),
 createdAt, updatedAt
 ```
@@ -258,7 +257,7 @@ paid, paidAt, paidBy, expenseId, note, createdAt, branchId
 Fees in range are computed by the client from `dailySummaries.byDoctor` for the days in the period.
 
 ### 4.22 `dailySummaries/{YYYY-MM-DD}`
-Written only by the `recomputeDailySummary` function.
+Written only by the `applyDailySummaryDelta` function, with `FieldValue.increment` on every field. Missing documents are created by the first increment.
 ```
 date, branchId,
 visits, newPatients, returningPatients,
@@ -275,7 +274,12 @@ updatedAt
 ```
 Dashboard ranges sum these documents. A month is at most 31 reads.
 
-### 4.23 `auditLogs/{logId}`
+**Delta rule.** For each write the function computes the document's contribution before and after (zero when absent or `deleted: true`) and increments the summary by the difference. A visit contributes `visits: 1`, `grossFees: fee`, `discounts: discountAmount`, `netFees: netAmount`, its payment method, department and doctor buckets, discount by user and reason, and `newPatients` or `returningPatients` from `isFirstVisit`. A sale contributes to the sales fields, an expense to the expense fields, and `netProfit` is `netFees + salesTotal - expensesTotal`. Status-only changes produce a zero delta and are skipped. Firestore triggers can fire twice for one write; the `eventId` is stored in `summaryEvents/{eventId}` with a 2-day TTL and the increment is skipped if it already exists, which keeps the totals exact.
+
+### 4.23 `summaryEvents/{eventId}`
+Written only by `applyDailySummaryDelta`. Idempotency ledger: `{ date, appliedAt, expiresAt }` with a Firestore TTL policy on `expiresAt` (2 days).
+
+### 4.24 `auditLogs/{logId}`
 Written only by Cloud Functions.
 ```
 collection, docId, action: "create" | "update" | "delete",
@@ -294,12 +298,12 @@ Audited collections: `visits`, `sales`, `expenses`, `doctors`, `visitTypes`, `in
 | `createUser` | callable, Admin only | Creates Auth user with temporary password, writes `users/{uid}`, sets custom claims. |
 | `setUserRoles` | callable, Admin only | Updates roles on the user doc and custom claims. Deactivation disables the Auth account. |
 | `assignPatientNo` | `patients` onCreate | Transaction on `counters/patients_{YY}`, writes `patientNo`. |
-| `recomputeDailySummary` | `visits`, `sales`, `expenses` onWrite | Reads all non-deleted documents for that `date` and rewrites `dailySummaries/{date}`. Idempotent, so retries are safe. Also counts new vs returning patients by comparing `patients.createdAt` date. |
+| `applyDailySummaryDelta` | `visits`, `sales`, `expenses` onWrite | Computes before/after contribution and increments `dailySummaries/{date}` (see §4.22 delta rule). Zero reads. Skips duplicate events through `summaryEvents`. |
+| `recomputeDay` | callable, Admin only | Repair tool: reads every visit, sale and expense of one `date` (a few hundred reads) and rewrites that summary from scratch. Used only when a total looks wrong. |
 | `audit*` | onWrite on audited collections | Writes `auditLogs` with before, after, and changed fields. |
 | `checkDuplicateFamilyPhone` | `families` onCreate | If another family has the same phone, flags both with `duplicatePhone: true` for Admin to merge. |
-| `dailyBackup` | scheduled 02:00 Asia/Karachi | `firestore.export` to `gs://<project>-backups/YYYY-MM-DD`. Bucket lifecycle rule deletes objects after 30 days. |
 
-Functions never write to collections that clients also write, except `patientNo` and the duplicate flag. This keeps offline writes free of conflicts.
+Functions never write to collections that clients also write, except `patientNo`, `isFirstVisit` validation and the duplicate flag. This keeps offline writes free of conflicts.
 
 ---
 
@@ -322,7 +326,7 @@ Roles come from `request.auth.token.roles`. Helper functions: `isAdmin()`, `isRe
 | `stockMovements` | Admin | Reception, Admin | never | never |
 | `sales` | any signed-in | Reception, Admin | Admin | never (soft) |
 | `expenses`, `payouts` | Admin | Admin | Admin | never |
-| `dailySummaries`, `auditLogs`, `counters` | Admin (`counters`: nobody) | Functions | Functions | never |
+| `dailySummaries`, `auditLogs`, `counters`, `summaryEvents` | Admin (`counters`, `summaryEvents`: nobody) | Functions | Functions | never |
 
 Additional rule checks:
 - `branchId` must be in `request.auth.token.branchIds`.
@@ -336,12 +340,13 @@ Additional rule checks:
 
 ## 7. Cloud Storage Layout
 
+Bucket: the default bucket, created in `us-central1`.
+
 ```
 clinic/logo.png
 patients/{patientId}/reports/{reportId}.{pdf|jpg|png}
-patients/{patientId}/prescriptions/{visitId}/{n}.jpg
 ```
-Rules: any signed-in user reads. Reception and Admin write under `reports`. Doctor writes under `prescriptions`. Max 10 MB per file. Images are resized on the client to a maximum of 1600 px before upload.
+Rules: any signed-in user reads. Reception and Admin write under `reports`; Admin writes `clinic/logo.png`. Max 10 MB per file. Report images are resized on the client to a maximum of 1200 px and JPEG quality 80 (roughly 150 KB) before upload so the 5 GB no-cost quota lasts years.
 
 ---
 
@@ -389,12 +394,23 @@ On first deploy an Admin-only "Initial setup" screen creates: `branches/main`, `
 
 ## 11. Cost Expectations
 
-At 100 visits a day: roughly 15,000 reads and 3,000 writes a day from reception and doctors, plus function invocations. This is inside the free quota for Firestore; expected monthly bill is dominated by Storage egress for report files and the backup bucket, likely under 5 USD. The one-time cost of caching all patients on a new reception device is one read per patient.
+Target: stay inside the Blaze no-cost quotas. Sized for **500 visits a day** (about 100 new patients, 200 appointments, 100 sales and 50 report uploads a day, 10 doctors on phones, 2 reception PCs).
+
+| Resource | Daily use at 500 visits | No-cost quota | Monthly cost |
+|---|---|---|---|
+| Firestore writes | about 9,000 (visits ×4, prescriptions, patients, appointments, sales, stock, summaries, ledger) | 20,000 / day | 0 |
+| Firestore reads | about 10,000 (listeners deliver changed docs only; patients cached on reception) | 50,000 / day | 0 |
+| Firestore storage incl. indexes | grows about 1.5 GiB a year | 1 GiB | 0 in year 1, then about 0.10 USD per extra GiB |
+| Cloud Functions | about 8,000 invocations | 2,000,000 / month | 0 |
+| Cloud Storage (us-central1) | reports about 50 MB a day, 1.5 GB a month | 5 GB stored, 100 GB download / month | 0 for the first 3 to 4 months, then about 0.02 USD per GB; about 0.30 USD a month by end of year 1 |
+| Hosting, Auth, App Check | small | generous | 0 |
+
+Expected bill: 0 USD for the first months, under 1 USD a month by the end of year 1, 1 to 2 USD a month by year 3 as reports accumulate. Things that would break the target and are therefore not in the design: full-day recompute of summaries, nightly full exports, photo prescriptions, a Mumbai Storage bucket. The one-time cost of caching all patients on a new reception device is one read per patient (36,000 patients is about 0.01 USD).
 
 ---
 
 ## 12. Open Points
 
 1. If a second reception device is ever added, token generation must move to a transaction or a Function. Not needed in v1.
-2. `recomputeDailySummary` reads every visit of the day on each write. Fine at clinic scale; revisit above 1,000 visits a day.
+2. Firestore storage passes the 1 GiB no-cost quota during year 1 at 500 visits a day. Cost is cents; if it matters, drop unused composite indexes or shorten `searchKeys`.
 3. Firestore cannot search by substring. Name search uses prefix keys; "contains" search would require Algolia or Typesense later.
