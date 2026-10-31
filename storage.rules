@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// Phase 0: deny everything. Paths from FIREBASE_ARCHITECTURE.md §7 are
+// opened per phase (reports in Phase 5, prescriptions in Phase 5, logo in Phase 2).
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

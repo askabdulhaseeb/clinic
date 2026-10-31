@@ -1,6 +1,6 @@
 # Clinic Management App — Feature Specification
 
-**Status:** Draft v4 — 30 Oct 2026. All requirement questions resolved; Eye prescription form design deferred to UI phase. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
+**Status:** Draft v5 — 31 Oct 2026. All requirement questions resolved; Eye prescription form design deferred to UI phase. v5: removed token reset rule and post-op day pattern from Settings (both live on visit types or are fixed), prescriptions are Doctor-only. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
 **Project:** `ramzan` (Flutter). Clinic name is not hard-coded; Admin sets it in Settings and it appears on receipts and the app header.
 
 This document is the source of truth for what the app does. Code follows this document. Anything not written here is not a requirement yet.
@@ -108,7 +108,7 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - **Purchase** — supplier, bill number, date, line items with quantity and unit cost, total. Creates stock movements and an expense.
 - **Expense** — category (rent, salary, utilities, supplies, purchase, payout, other), amount, date, note, source (manual, purchase, payout), recorded by.
 - **Doctor Payout** — any date range chosen by Admin, salary amount (prefilled with monthly salary, editable), share earned on gross or net basis, total, paid flag. Paid payouts create an expense.
-- **Settings** — clinic name, logo, address, phone, receipt footer, follow-up reminder days, token reset rule (daily per doctor), WhatsApp reminder toggles per type (appointment, follow-up, post-op), WhatsApp message templates.
+- **Settings** — clinic name, logo, address, phone, receipt footer, follow-up reminder days, WhatsApp reminder toggles per type (appointment, follow-up, post-op), WhatsApp message templates.
 - **Audit Log** — who, what, when, before and after values. Written for every edit, delete, discount, fee change, and stock adjustment.
 - **User** — email, display name, roles (list), linked doctor ID if any, active flag.
 
@@ -252,7 +252,6 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 ### 7.8 Settings
 - Clinic name, logo, address, phone, receipt footer, default receipt copy count.
 - Follow-up reminder days.
-- Post-op follow-up day pattern.
 - WhatsApp reminders: on or off per reminder type (appointment, follow-up, post-op), and the message template for each.
 
 ### 7.9 Audit log

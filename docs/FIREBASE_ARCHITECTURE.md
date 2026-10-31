@@ -1,6 +1,6 @@
 # Firebase Architecture
 
-**Status:** Draft v1 — 30 Oct 2026
+**Status:** Draft v2 — 31 Oct 2026. v2: prescriptions writable by Doctor only (matches FEATURES §3).
 **Companion to:** [FEATURES.md](FEATURES.md). Feature behaviour is defined there; this document defines how it is stored and secured.
 
 ---
@@ -314,7 +314,7 @@ Roles come from `request.auth.token.roles`. Helper functions: `isAdmin()`, `isRe
 | `families`, `patients` | any signed-in | Reception, Admin | Reception, Admin | never (soft) |
 | `appointments` | any signed-in | Reception, Doctor, Admin | Reception, Doctor, Admin | never |
 | `visits` | any signed-in | Reception, Admin | Admin any field; Doctor only `status`, `startedAt`, `completedAt`, `hasPrescription` on own visits | never (soft) |
-| `prescriptions` | any signed-in | Doctor (own visit), Admin | Doctor (own), Admin | never |
+| `prescriptions` | any signed-in | Doctor (own visit) | Doctor (own) | never |
 | `reports` | any signed-in | Reception, Admin | Reception, Admin | never (soft) |
 | `operations` | any signed-in | Doctor, Admin | Doctor, Reception (only `postOpDays`, `followUpAppointmentIds`), Admin | never |
 | `inventoryItems` | any signed-in | Admin | Admin; Reception only `stock` via increment | never |
@@ -341,7 +341,7 @@ clinic/logo.png
 patients/{patientId}/reports/{reportId}.{pdf|jpg|png}
 patients/{patientId}/prescriptions/{visitId}/{n}.jpg
 ```
-Rules: any signed-in user reads. Reception and Admin write under `reports`. Doctor and Admin write under `prescriptions`. Max 10 MB per file. Images are resized on the client to a maximum of 1600 px before upload.
+Rules: any signed-in user reads. Reception and Admin write under `reports`. Doctor writes under `prescriptions`. Max 10 MB per file. Images are resized on the client to a maximum of 1600 px before upload.
 
 ---
 

@@ -46,3 +46,15 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+pubsub-debug.log
+storage-debug.log
+database-debug.log
+functions/node_modules/
+functions/lib/

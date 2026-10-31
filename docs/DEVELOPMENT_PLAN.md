@@ -1,6 +1,6 @@
 # Development Plan
 
-Draft v2 — 31 Oct 2026. Companion to [FEATURES.md](FEATURES.md) and [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md). This document fixes the technical choices for the Flutter code and the order in which features are built.
+Draft v3 — 31 Oct 2026. v3: integration tests fixed on the Firestore emulator (open point 1 closed). Companion to [FEATURES.md](FEATURES.md) and [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md). This document fixes the technical choices for the Flutter code and the order in which features are built.
 
 ---
 
@@ -12,11 +12,12 @@ Draft v2 — 31 Oct 2026. Companion to [FEATURES.md](FEATURES.md) and [FIREBASE_
 | Architecture | Clean architecture, feature-first: each feature owns `domain/`, `data/`, `presentation/`. Shared code in `lib/core/`. |
 | Models | Plain Dart. Hand-written `fromMap`, `toMap`, `copyWith`. No `freezed`, no `build_runner` for models. |
 | Routing | `go_router`. URL paths on web, role-based redirect after login. |
-| UI | Material 3, teal primary. Eye accent blue, Homeo accent green. Screens designed while building, reviewed one by one. |
+| UI | Material 3, teal primary. Eye accent blue, Homeo accent green. Shells, navigation and form layouts in [UI_DESIGN.md](UI_DESIGN.md); screens reviewed one by one while building. |
 | Theme details | Light + dark, follows system. Roboto (Flutter default). Density compact on desktop and desktop browsers, standard on phones (`VisualDensity.adaptivePlatformDensity`). Launcher name and browser title: **Clinic**. |
 | Build order | Admin setup first, then Reception visit flow, Doctor, Appointments, Inventory, Finance, hardening. |
-| Firebase project | `ramzan-clinic-web` (project number 662931473606), created by the owner. Android, iOS, web and Windows apps registered; `lib/firebase_options.dart` generated. Firestore, Auth and Storage still to be enabled in the console (asia-south1). |
-| Dev backend | Flutter app talks to the live Firebase project. Cloud Functions and rules are developed on the local Emulator Suite, then deployed. |
+| Firebase project | `ramzan-clinic-web` (project number 662931473606), created by the owner. Android, iOS, web and Windows apps registered; `lib/firebase_options.dart` generated. Firestore, Auth (Email/Password) and Blaze enabled on 31 Oct 2026. Storage bucket `ramzan-clinic-web.firebasestorage.app` is configured in the SDK; its existence is confirmed by the first `firebase deploy --only storage`. |
+| Dev backend | Flutter app talks to the live Firebase project during development. Cloud Functions and rules are developed on the local Emulator Suite, then deployed. |
+| Test backend | All integration, rules and functions tests run against the local Firestore Emulator Suite with seed data. Tests never touch the live project. No second Firebase project. |
 | Automated tests | Full: unit tests (domain + view models), widget tests (every screen), integration tests (key flows). Firestore rules tests on the emulator. |
 | App identifier | `ramzan.shop.ramzan` for Android package and iOS bundle ID. Android minSdk 23, iOS 15.0. |
 | Cloud Functions runtime | 2nd gen, TypeScript, Node 22 runtime (local Node 24 is fine for tooling). |
@@ -53,7 +54,7 @@ Then on this machine:
 ! firebase login            # interactive, run with the ! prefix
 flutterfire configure --project=<project-id> --platforms=web,android,ios \
   --android-package-name=ramzan.shop.ramzan --ios-bundle-id=ramzan.shop.ramzan
-firebase init firestore functions storage emulators hosting
+firebase init firestore functions storage emulators hosting   # done by hand on 31 Oct 2026, see Phase 0
 ```
 
 App Check is enabled last (Phase 9) so it does not block development.
@@ -156,7 +157,7 @@ Development:
 Each phase ends with: screens reviewed by the owner, unit + widget tests passing, integration test for the phase's main flow, rules updated and tested, functions deployed if changed. Phases map to feature folders above.
 
 ### Phase 0 — Project setup
-Status 31 Oct 2026: done except `firebase init` (functions, rules, emulators) which waits for Firestore to be enabled.
+Status 31 Oct 2026: Firebase init done by hand (same files `firebase init` writes): `.firebaserc`, `firebase.json` (firestore, storage, functions, hosting, emulators), deny-all `firestore.rules` and `storage.rules`, empty `firestore.indexes.json`, `functions/` TypeScript scaffold (firebase-functions 7, firebase-admin 13, Jest + ts-jest, rules-unit-testing). Emulator ports: Auth 9099, Firestore 8080, Functions 5001, Storage 9199, Hosting 5000, UI 4000. First rules deploy is run by the owner (`firebase deploy --only firestore:rules,storage`).
 
 - Rename app ID to `ramzan.shop.ramzan`, app name "Clinic".
 - Add packages, `flutterfire configure`, `firebase init`.
@@ -226,7 +227,7 @@ Status 31 Oct 2026: done except `firebase init` (functions, rules, emulators) wh
 | Unit | Use cases, view models, utils (fee math, token, patient number, search keys, Karachi dates, summaries) | `flutter_test`, `mocktail` | Local, no Firebase |
 | Data | Repositories against in-memory Firestore | `fake_cloud_firestore` | Local |
 | Widget | Every screen with mocked view models: renders, validation, role visibility | `flutter_test` | Local |
-| Integration | Login → create visit → print receipt; offline visit creation; doctor prescription; sale | `integration_test` on Chrome and Android emulator | Firestore **emulator** with seed data (see open point 1) |
+| Integration | Login → create visit → print receipt; offline visit creation; doctor prescription; sale | `integration_test` on Chrome and Android emulator | Firestore **emulator** with seed data |
 | Rules | Allow/deny matrix per collection from FIREBASE_ARCHITECTURE §6 | `@firebase/rules-unit-testing` | Emulator |
 | Functions | Each function with emulated Firestore | Jest | Emulator |
 
@@ -247,6 +248,7 @@ Coverage is not a target number. Every phase's listed flows must have a test bef
 
 ## 9. Open Points
 
-1. **Integration tests and the live project.** The app uses the live project in development, but integration tests should not write into real data. The plan runs them against the Firestore emulator. Confirm this is acceptable or choose a second Firebase project for tests.
-2. **Theme colour editable by Admin** was not chosen. Teal is fixed in code for v1.
-3. **Google Analytics** on the Firebase project is optional and unused by the app.
+1. **Theme colour editable by Admin** was not chosen. Teal is fixed in code for v1.
+2. **Google Analytics** on the Firebase project is optional and unused by the app.
+
+Resolved 31 Oct 2026: integration tests run on the Firestore emulator, never on the live project (see §1 Test backend).
