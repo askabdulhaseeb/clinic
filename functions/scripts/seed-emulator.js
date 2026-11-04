@@ -4,11 +4,12 @@
 //   node scripts/seed-emulator.js
 // Never points at production: it refuses to run without the emulator hosts.
 //
-// Seeded: three accounts (admin, first-login reception, multi-role), the Eye
-// and Homeopathy departments with their visit types, and one doctor record
-// linked to the multi-role account. `settings/general` is deliberately NOT
-// seeded so the integration test can exercise the first-run setup screen;
-// the admin setup flow creates it.
+// Seeded: four accounts (admin, first-login reception, plain reception,
+// multi-role), the Eye and Homeopathy departments with their visit types,
+// one doctor record linked to the multi-role account, and one family with
+// two patients (Phase 3). `settings/general` is deliberately NOT seeded so
+// the integration test can exercise the first-run setup screen; the admin
+// setup flow creates it.
 process.env.FIREBASE_AUTH_EMULATOR_HOST ??= "127.0.0.1:9099";
 process.env.FIRESTORE_EMULATOR_HOST ??= "127.0.0.1:8080";
 process.env.GCLOUD_PROJECT ??= "ramzan-clinic-web";
@@ -39,6 +40,15 @@ const SEED = [
     roles: ["reception"],
     doctorId: null,
     mustChangePassword: true,
+  },
+  {
+    uid: "seed-reception",
+    email: "reception@clinic.test",
+    password: "Reception12345",
+    displayName: "Seed Reception",
+    roles: ["reception"],
+    doctorId: null,
+    mustChangePassword: false,
   },
   {
     uid: "seed-multi",
@@ -157,9 +167,88 @@ async function seedCatalog() {
   console.log("seeded departments, visit types, doctor seed-doctor");
 }
 
+// Phase 3: one family with two patients so search has something to find.
+// `patientNo` stays null; when the Functions emulator is running the
+// assignPatientNo trigger numbers them like the real project would.
+const FAMILY = {
+  id: "seed-family-khan",
+  phone: "03001234567",
+  headName: "Khan",
+  address: "Lyari, Karachi",
+};
+const PATIENTS = [
+  {
+    id: "seed-patient-ali",
+    tempNo: "T-SEED1",
+    name: "Ali Khan",
+    gender: "male",
+    dateOfBirth: "1986-01-01",
+    dobApproximate: true,
+    personalPhone: null,
+    searchKeys: ["a", "al", "ali", "ali ", "ali k", "ali kh", "ali kha", "ali khan", "k", "kh", "kha", "khan"],
+  },
+  {
+    id: "seed-patient-sara",
+    tempNo: "T-SEED2",
+    name: "Sara Khan",
+    gender: "female",
+    dateOfBirth: "2010-04-02",
+    dobApproximate: false,
+    personalPhone: "03119876543",
+    searchKeys: ["s", "sa", "sar", "sara", "sara ", "sara k", "sara kh", "sara kha", "sara khan", "k", "kh", "kha", "khan"],
+  },
+];
+
+async function seedPatients() {
+  const batch = db.batch();
+  batch.set(
+    db.collection("families").doc(FAMILY.id),
+    {
+      phone: FAMILY.phone,
+      headName: FAMILY.headName,
+      address: FAMILY.address,
+      patientCount: PATIENTS.length,
+      duplicatePhone: false,
+      branchId: "main",
+      ...STAMP("seed"),
+    },
+    { merge: true }
+  );
+  for (const p of PATIENTS) {
+    batch.set(
+      db.collection("patients").doc(p.id),
+      {
+        patientNo: null,
+        tempNo: p.tempNo,
+        familyId: FAMILY.id,
+        name: p.name,
+        gender: p.gender,
+        dateOfBirth: p.dateOfBirth,
+        dobApproximate: p.dobApproximate,
+        personalPhone: p.personalPhone,
+        phones: [FAMILY.phone, ...(p.personalPhone ? [p.personalPhone] : [])],
+        address: "",
+        notes: "",
+        searchKeys: p.searchKeys,
+        visitCount: 0,
+        lastVisitAt: null,
+        lastDoctorId: null,
+        deleted: false,
+        branchId: "main",
+        createdAtLocal: FieldValue.serverTimestamp(),
+        ...STAMP("seed"),
+      },
+      { merge: true }
+    );
+  }
+  await batch.commit();
+  console.log("seeded family Khan with Ali Khan and Sara Khan");
+}
+
 (async () => {
   for (const u of SEED) await upsert(u);
   await seedCatalog();
+  await seedPatients();
   console.log("done");
   process.exit(0);
 })().catch((e) => {

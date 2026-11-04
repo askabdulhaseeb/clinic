@@ -11,5 +11,7 @@ initializeApp();
 // Phase 8: applyDailySummaryDelta, recomputeDay (summaries.ts)
 // Phase 9: audit*                              (audit.ts)
 export { createUser, setUserRoles, resetUserPassword } from "./users";
+export { assignPatientNo } from "./patients";
+export { checkDuplicateFamilyPhone } from "./families";
 // Development helper, enabled by ALLOW_TEST_ADMIN in functions/.env (test_admin.ts)
 export { createTestAdmin } from "./test_admin";

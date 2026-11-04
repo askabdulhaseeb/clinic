@@ -17,6 +17,9 @@ import 'package:ramzan/features/catalog/domain/entities/department.dart';
 import 'package:ramzan/features/catalog/domain/entities/doctor.dart';
 import 'package:ramzan/features/catalog/domain/entities/visit_type.dart';
 import 'package:ramzan/features/catalog/domain/repositories/catalog_repository.dart';
+import 'package:ramzan/features/patients/domain/entities/family.dart';
+import 'package:ramzan/features/patients/domain/entities/patient.dart';
+import 'package:ramzan/features/patients/domain/repositories/patients_repository.dart';
 import 'package:ramzan/features/settings/domain/entities/clinic_settings.dart';
 import 'package:ramzan/features/settings/domain/entities/initial_setup_input.dart';
 import 'package:ramzan/features/settings/domain/repositories/settings_repository.dart';
@@ -107,6 +110,61 @@ class MockUserAdminRepository extends Mock implements UserAdminRepository {}
 class MockCatalogRepository extends Mock implements CatalogRepository {}
 
 class MockSettingsRepository extends Mock implements SettingsRepository {}
+
+class MockPatientsRepository extends Mock implements PatientsRepository {}
+
+/// Call once (setUpAll) before using `any()` with patient inputs.
+void registerPatientFallbacks() {
+  registerFallbackValue(const PatientInput(name: '', gender: Gender.other));
+  registerFallbackValue(const FamilyInput(phone: '', headName: ''));
+}
+
+const khanFamily = Family(
+  id: 'fam-khan',
+  phone: '03001234567',
+  headName: 'Khan',
+  address: 'Lyari',
+  patientCount: 2,
+);
+const ahmedFamily = Family(
+  id: 'fam-ahmed',
+  phone: '03211111111',
+  headName: 'Ahmed',
+  patientCount: 1,
+);
+
+const patientAli = Patient(
+  id: 'pat-ali',
+  patientNo: '26-00001',
+  tempNo: 'T-AAAAA',
+  familyId: 'fam-khan',
+  name: 'Ali Khan',
+  gender: Gender.male,
+  dateOfBirth: '1986-01-01',
+  dobApproximate: true,
+  phones: ['03001234567'],
+  address: 'Lyari',
+);
+const patientSara = Patient(
+  id: 'pat-sara',
+  tempNo: 'T-BBBBB',
+  familyId: 'fam-khan',
+  name: 'Sara Khan',
+  gender: Gender.female,
+  dateOfBirth: '2010-04-02',
+  personalPhone: '03119876543',
+  phones: ['03001234567', '03119876543'],
+  notes: 'Allergic to penicillin',
+);
+const patientAlina = Patient(
+  id: 'pat-alina',
+  patientNo: '26-00002',
+  tempNo: 'T-CCCCC',
+  familyId: 'fam-ahmed',
+  name: 'Alina Ahmed',
+  gender: Gender.female,
+  phones: ['03211111111'],
+);
 
 /// A catalog mock whose three streams are already stubbed with [departments],
 /// [doctors] and [visitTypes] (broadcast, so several listeners are fine).
@@ -312,6 +370,7 @@ Widget wrapWithProviders({
   CatalogRepository? catalogRepository,
   SettingsRepository? settingsRepository,
   SettingsController? settingsController,
+  PatientsRepository? patientsRepository,
   DevToolsRepository? devTools,
   Size size = const Size(1280, 800),
 }) {
@@ -328,6 +387,8 @@ Widget wrapWithProviders({
         ChangeNotifierProvider<SettingsController>.value(
           value: settingsController,
         ),
+      if (patientsRepository != null)
+        Provider<PatientsRepository>.value(value: patientsRepository),
       if (devTools != null) Provider<DevToolsRepository>.value(value: devTools),
     ],
     child: MediaQuery(

@@ -1,6 +1,6 @@
 # Firebase Architecture
 
-**Status:** Draft v4 — 3 Nov 2026. v4: Phase 2 — `branches`, `settings`, `departments`, `visitTypes`, `doctors` rules; doctor–login link kept by `createUser` / `setUserRoles`; logo in Storage; first-run setup from the app. v3: budget decisions — summaries kept by increments (no recompute), no backup, Storage bucket in us-central1, no prescription photos, cost table for 500 visits a day.
+**Status:** Draft v5 — 4 Nov 2026. v5: Phase 3 — `families`, `patients` rules and shape; `assignPatientNo` and `checkDuplicateFamilyPhone` triggers; `dobApproximate` instead of `ageYears`; patient cache listeners; seed family. v4: Phase 2 — `branches`, `settings`, `departments`, `visitTypes`, `doctors` rules; doctor–login link kept by `createUser` / `setUserRoles`; logo in Storage; first-run setup from the app. v3: budget decisions — summaries kept by increments (no recompute), no backup, Storage bucket in us-central1, no prescription photos, cost table for 500 visits a day.
 **Companion to:** [FEATURES.md](FEATURES.md). Feature behaviour is defined there; this document defines how it is stored and secured.
 
 ---
@@ -22,6 +22,8 @@
 | Inventory | No batch or expiry tracking. Suppliers and purchase bills are tracked; a purchase creates an expense. |
 | Payouts | Admin chooses any date range. Payout = salary amount entered by Admin (prefilled with monthly salary) plus share of fees in the range. |
 | Family rules | Patient may have a personal phone. Patient can be moved between families. Family phone can be changed. |
+| Patient age | Decided 4 Nov 2026. Only `dateOfBirth` is stored. An age typed by reception becomes 1 January of the birth year with `dobApproximate: true`; the UI shows `~40 y`. No `ageYears` field. |
+| Family phone clash | Decided 4 Nov 2026. The client refuses to create a family, or change a family phone, to a number another family has (query on `families.phone`, from the cache when offline). A clash that slips through offline is flagged by `checkDuplicateFamilyPhone`. |
 | Queue | Doctor sees only their own queue. |
 | Timezone | Asia/Karachi for day boundaries. |
 | Backup | None in v1 (owner decision 31 Oct 2026, cost). Firestore replicates data across zones; the risk accepted is accidental bulk deletion or corruption by the app, which soft deletes and Admin-only edits mitigate. Point-in-time recovery or a monthly export can be enabled later without code changes. |
@@ -112,22 +114,26 @@ Each department is seeded with Checkup and Follow-up (`isFollowUp: true`), fixed
 
 ### 4.7 `families/{familyId}`
 ```
-phone, headName, address, patientCount, branchId, createdAt, updatedAt
+phone ("03001234567", normalised), headName, address, patientCount,
+duplicatePhone (false; set by checkDuplicateFamilyPhone only),
+branchId, createdAt, createdAtLocal, createdBy, updatedAt, updatedBy
 ```
-`phone` is indexed and unique in practice (checked on client before create; a Function flags duplicates created offline).
+`phone` is indexed and unique in practice (checked on client before create; a Function flags duplicates created offline). `patientCount` is kept by the client batches that add or move patients.
 
 ### 4.8 `patients/{patientId}`
 ```
-patientNo (nullable until assigned, e.g. "26-00341"),
-tempNo ("T-7K3M9"),
-familyId, name, gender, dateOfBirth (nullable), ageYears (nullable),
+patientNo (null until assigned, e.g. "26-00341"),
+tempNo ("T-7K3M9": T- plus five characters from A-Z, 2-9 without 0/O/1/I),
+familyId, name, gender ("male" | "female" | "other"),
+dateOfBirth ("YYYY-MM-DD", nullable), dobApproximate (bool, see §1),
 personalPhone (nullable),
 phones: [familyPhone, personalPhone],   // denormalised for array-contains search
 address, notes, searchKeys: [],
 visitCount, lastVisitAt, lastDoctorId,
-branchId, createdAt, createdAtLocal, createdBy, updatedAt
+deleted, deletedAt, deletedBy, deleteReason,
+branchId, createdAt, createdAtLocal, createdBy, updatedAt, updatedBy
 ```
-Moving a patient to another family updates `familyId` and `phones`, and adjusts `patientCount` on both families in one batch. Changing a family phone fans out to `phones` on every patient of that family (client batch, families are small).
+Moving a patient to another family updates `familyId` and `phones`, and adjusts `patientCount` on both families in one batch. Changing a family phone fans out to `phones` on every patient of that family (client batch, families are small). Searches filter `deleted` on the client and sort by name in memory (result sets are small), so the Phase 3 queries need no composite index.
 
 ### 4.9 `counters/{counterId}`
 ```
@@ -303,11 +309,11 @@ Audited collections: `visits`, `sales`, `expenses`, `doctors`, `visitTypes`, `in
 | `setUserRoles` | callable, Admin only | Input `{ uid, roles?, doctorId?, displayName?, active? }`. Before touching the account, syncs the doctor link in one transaction: the new doctor (if any) must exist and be unlinked or linked to this uid, gets `userId = uid`; the previous doctor of this uid gets `userId = null`. Then updates custom claims and the user doc (`branchIds` kept, `updatedAt/By` written), also writes `displayName` to the Auth profile. `active: false` disables the Auth account and revokes refresh tokens; `active: true` re-enables. Rejects an admin removing their own admin role or deactivating themselves (`failed-precondition`). Granting `doctor` requires a `doctorId`. |
 | `createTestAdmin` | callable, **anyone**, only while `ALLOW_TEST_ADMIN=true` in `functions/.env` | Development helper (decided 2 Nov 2026). Creates or restores the fixed account `admin@mytester.com` / `1234567890`: Auth user enabled with that password, claims `{ roles: ["admin"], doctorId: null, branchIds: ["main"] }`, `users/{uid}` with `active: true`, `mustChangePassword: false`, `createdBy: "createTestAdmin"`; refresh tokens revoked so old sessions pick up the claims. Returns `{ uid, created }`. With the switch off it throws `failed-precondition`. Phase 9 sets the switch to false, redeploys and deletes the account. |
 | `resetUserPassword` | callable, Admin only | Input `{ uid, temporaryPassword }` (min 8 chars). Sets the Auth password, sets `mustChangePassword: true`, revokes refresh tokens so the user must sign in again with the temporary password. |
-| `assignPatientNo` | `patients` onCreate | Transaction on `counters/patients_{YY}`, writes `patientNo`. |
+| `assignPatientNo` | `patients` onCreate | Transaction: reads the patient and `counters/patients_{YY}` (YY = Karachi year of `createdAtLocal`, falling back to now), increments the counter and writes `patientNo` as `YY-NNNNN`. Skips documents that already have a number, so a retried event never double-counts. |
 | `applyDailySummaryDelta` | `visits`, `sales`, `expenses` onWrite | Computes before/after contribution and increments `dailySummaries/{date}` (see §4.22 delta rule). Zero reads. Skips duplicate events through `summaryEvents`. |
 | `recomputeDay` | callable, Admin only | Repair tool: reads every visit, sale and expense of one `date` (a few hundred reads) and rewrites that summary from scratch. Used only when a total looks wrong. |
 | `audit*` | onWrite on audited collections | Writes `auditLogs` with before, after, and changed fields. |
-| `checkDuplicateFamilyPhone` | `families` onCreate | If another family has the same phone, flags both with `duplicatePhone: true` for Admin to merge. |
+| `checkDuplicateFamilyPhone` | `families` onCreate | Queries `families` by the new family's phone; when more than one exists, sets `duplicatePhone: true` on every one of them for Admin to merge. |
 
 Functions never write to collections that clients also write, except `patientNo`, `isFirstVisit` validation, the duplicate flag and `doctors.userId` (Admin-only, online-only data, so no offline conflict). This keeps offline writes free of conflicts.
 
@@ -321,7 +327,7 @@ Roles come from `request.auth.token.roles`. Helper functions: `isAdmin()`, `isRe
 |---|---|---|---|---|
 | `branches`, `settings`, `departments`, `visitTypes`, `doctors` | any signed-in | Admin (`createdBy` = caller; `settings`: `updatedBy`) | Admin (`updatedBy` = caller). `doctors`: `userId`, `branchId`, `createdAt`, `createdBy` cannot change. Shape checks: non-empty names and codes, `salary` int ≥ 0, `sharePercent` 0–100, `shareBasis` in gross/net, `fees` map, boolean flags | never |
 | `users` | own doc, or Admin | Functions only | Admin: only `displayName` (+ `updatedAt`, `updatedBy`). Owner: only `mustChangePassword` → `false` (+ `updatedAt`, `updatedBy`). Roles, `active`, `doctorId`: Functions only | never |
-| `families`, `patients` | any signed-in | Reception, Admin | Reception, Admin | never (soft) |
+| `families`, `patients` | any signed-in | Reception, Admin (`createdBy` = caller, `branchId` in claims). `families`: non-empty `phone` and `headName`, `patientCount` int, `duplicatePhone == false`. `patients`: `patientNo == null`, non-empty `tempNo`, `familyId`, `name`, `gender` in male/female/other, `phones` and `searchKeys` lists, `visitCount` int, `deleted` bool | Reception, Admin (`updatedBy` = caller, same shape). Locked: `families.duplicatePhone`; `patients.patientNo`, `tempNo`; on both `branchId`, `createdAt`, `createdAtLocal`, `createdBy` | never (soft) |
 | `appointments` | any signed-in | Reception, Doctor, Admin | Reception, Doctor, Admin | never |
 | `visits` | any signed-in | Reception, Admin | Admin any field; Doctor only `status`, `startedAt`, `completedAt`, `hasPrescription` on own visits | never (soft) |
 | `prescriptions` | any signed-in | Doctor (own visit) | Doctor (own) | never |
@@ -368,9 +374,9 @@ Rules: any signed-in user reads. Reception and Admin write under `reports` (Phas
 | `appointments` | `doctorId asc, date asc, status asc` |
 | `appointments` | `date asc, status asc, reminderSentAt asc` (reminders due) |
 | `appointments` | `patientId asc, date desc` |
-| `patients` | `phones array-contains, deleted asc` |
-| `patients` | `searchKeys array-contains, name asc` |
-| `patients` | `familyId asc, name asc` |
+| `patients` | `phones array-contains, deleted asc` (not yet created: Phase 3 filters `deleted` and sorts on the client) |
+| `patients` | `searchKeys array-contains, name asc` (same) |
+| `patients` | `familyId asc, name asc` (same) |
 | `reports` | `patientId asc, deleted asc, uploadedAt desc` |
 | `operations` | `surgeonDoctorId asc, status asc, scheduledDate asc` |
 | `stockMovements` | `itemId asc, createdAt desc` |
@@ -389,6 +395,7 @@ Firestore will also prompt for any missing index on first use; the list above is
 - On login reception attaches live listeners to: `settings`, `departments`, `doctors`, `visitTypes`, `inventoryItems`, today's `visits`, today's and tomorrow's `appointments`, and the full `families` and `patients` collections. The full patient set is kept in the cache so phone and name search work offline. At 20,000 patients this is roughly 20 MB and a one-time read cost per device.
 - Writes go to the local cache first and sync in the background. The UI shows an online/offline badge and a pending-write count from `waitForPendingWrites`.
 - New patients get `tempNo` immediately; `patientNo` arrives after sync and the next receipt shows it.
+- The full-collection listeners for `families` and `patients` are held by `PatientCacheController` (Phase 3), which starts them when a user with the reception role signs in and stops them on sign-out. Doctors and admins without the reception role do not pay for the cache.
 - Tokens are computed from the cache. Receipt PDFs are generated on the client, so printing works offline.
 - Uploads (reports) are queued by the app and sent when online; the report document is created only after the file upload succeeds.
 
@@ -396,7 +403,7 @@ Firestore will also prompt for any missing index on first use; the list above is
 
 ## 10. Seed Data
 
-The first Admin user is created with the Firebase console (or the dev test-admin button). While `settings/general` is missing, every Admin page shows a banner leading to `/admin/setup` (decided 3 Nov 2026: banner, not a forced redirect). The Initial setup screen asks for the clinic name, address and phone and writes in one batch: `branches/main`, `settings/general` (defaults from §4.2), departments Eye and Homeopathy, visit types Checkup and Follow-up for each plus Eye Test (fixed IDs, §4.4 and §4.6, merged so a re-run never duplicates). The emulator seed (`functions/scripts/seed-emulator.js`) writes the same catalog IDs plus one doctor, and deliberately leaves `settings/general` missing so the integration test covers the setup screen.
+The first Admin user is created with the Firebase console (or the dev test-admin button). While `settings/general` is missing, every Admin page shows a banner leading to `/admin/setup` (decided 3 Nov 2026: banner, not a forced redirect). The Initial setup screen asks for the clinic name, address and phone and writes in one batch: `branches/main`, `settings/general` (defaults from §4.2), departments Eye and Homeopathy, visit types Checkup and Follow-up for each plus Eye Test (fixed IDs, §4.4 and §4.6, merged so a re-run never duplicates). The emulator seed (`functions/scripts/seed-emulator.js`) writes the same catalog IDs plus one doctor, a plain reception account (`reception@clinic.test` / `Reception12345`) and one family (`03001234567`, Khan) with two patients, and deliberately leaves `settings/general` missing so the integration test covers the setup screen.
 
 ---
 

@@ -39,15 +39,25 @@ tool/integration_test_web.sh                     # every integration_test/*_test
 tool/integration_test_web.sh --no-headless       # same, visible Chrome window
 ```
 
+One integration file (the script downloads ChromeDriver into `.dart_tool/chromedriver` on first run; start it on port 4444 yourself, then):
+
+```sh
+firebase emulators:exec --only auth,firestore,functions,storage \
+  "node functions/scripts/seed-emulator.js && flutter drive --driver=test_driver/integration_test.dart \
+   --target=integration_test/login_flow_test.dart -d web-server --dart-define=USE_EMULATORS=true"
+```
+
 Run the app against the emulators instead of the live project:
 
 ```sh
 firebase emulators:start                         # Auth 9099, Firestore 8080, Functions 5001, Storage 9199, UI 4000
-node functions/scripts/seed-emulator.js          # accounts (SEED array: admin@clinic.test / Admin12345 etc.) + catalog
+node functions/scripts/seed-emulator.js          # accounts (SEED array: admin@clinic.test / Admin12345, reception@clinic.test / Reception12345 etc.) + catalog + one family
 flutter run -d chrome --dart-define=USE_EMULATORS=true
 ```
 
 Run `flutter analyze`, `flutter test` and `cd functions && npm test` before saying a change is done; run the integration script when a flow changed.
+
+Analyzer rules that bite (`analysis_options.yaml`): strict casts/inference/raw types, `prefer_final_locals`, `require_trailing_commas`, `prefer_single_quotes`, `unawaited_futures`, `directives_ordering`, `sort_pub_dependencies`, no `dynamic` calls. Dart 3.13 also wants null-aware elements (`[?maybe]`, `{'k': ?maybe}`) and `required this._field` instead of assigning a private field in the initializer list.
 
 ## Architecture
 
@@ -60,13 +70,14 @@ Summary; details in DEVELOPMENT_PLAN §4–§8.
 
 ### How the pieces connect
 
-- `main.dart` builds the Provider tree: repositories, then `SessionController` (auth state + active role), then `SettingsController` (watches `settings/general` while signed in; gives the shell its clinic name and the Admin first-run banner). `app.dart` builds the `GoRouter` from `core/routing/app_router.dart`.
+- `main.dart` builds the Provider tree: repositories, then `SessionController` (auth state + active role), then `SettingsController` (watches `settings/general` while signed in; gives the shell its clinic name and the Admin first-run banner) and `PatientCacheController` (keeps the `families`/`patients` listeners open for reception sessions so search works offline). `app.dart` builds the `GoRouter` from `core/routing/app_router.dart`.
 - Routing: `redirectFor(session, location)` is pure and unit-tested; it handles splash → login → forced password change → role home and the `from` return path. Each role has a `ShellRoute` wrapping `AppShell` (sidebar / rail / bottom bar by width); `_screenFor` maps sidebar paths to screens, unbuilt ones get `PlaceholderScreen` ("X — coming soon", which integration tests assert on). Extra Admin pages live in `_adminRoutes()`. All paths are constants in `app_routes.dart`.
 - Screens come in pairs: `FooScreen` creates the view model from context and renders `FooView`, which only reads the view model. Widget tests pump `FooView` with a mocked or fake view model dependency. Interactive widgets carry `Key('...')` names that both widget and integration tests use.
-- Admin writes to users go through callables (`createUser`, `setUserRoles`, `resetUserPassword`), which also keep `doctors.userId` in step with `users.doctorId`. Everything else Admin edits (settings, catalog) is written directly under rules.
+- Admin writes to users go through callables (`createUser`, `setUserRoles`, `resetUserPassword`), which also keep `doctors.userId` in step with `users.doctorId`. Everything else (settings, catalog, families, patients) is written directly under rules; Firestore triggers (`assignPatientNo`, `checkDuplicateFamilyPhone`) fill in the functions-only fields afterwards, and rules lock those fields against clients.
 - Cloud Functions (`functions/src/`, TypeScript, 2nd gen): each callable is `onCall(wrap(fooCore))` where `fooCore(deps, callerUid, callerClaims, data)` is pure enough to test against the emulators; `validation.ts` turns raw input into typed input or `invalid-argument`. Roles are custom claims; rules read `request.auth.token.roles`, not the user document.
 - Test helpers in `test/helpers/fakes.dart`: `FakeAuthRepository`, `FakeSettingsRepository`, `stubbedCatalog()`, sample entities, `signedInSession()`, `wrapWithProviders()`. Functions tests clear the emulators over REST in `beforeEach`; rules tests load `firestore.rules` from the repo root.
-- Integration tests (Chrome, emulators) never call `pumpAndSettle` (focused fields never settle on web); use the `waitFor` helpers in `integration_test/support.dart`. Files run in name order inside one emulator session, so `admin_setup_flow_test.dart` runs first and creates `settings/general`, which the seed deliberately leaves missing.
+- Patient screens take a `role` and are mounted under both `/reception/patients` and `/admin/patients` (`_patientRoutes` in the router, paths from `AppRoutes.patientsFor` etc.).
+- Integration tests (Chrome, emulators) never call `pumpAndSettle` (focused fields never settle on web); use the `waitFor` helpers in `integration_test/support.dart`. On web a TextField that was submitted loses focus and a later `enterText` into it is silently dropped, so tap the field (or its keyed clear button) before typing again. Files run in name order inside one emulator session, so `admin_setup_flow_test.dart` runs first and creates `settings/general`, which the seed deliberately leaves missing.
 - Dev helper: a debug-only "Create test admin" button on the login screen (admin@mytester.com / 1234567890, `createTestAdmin` callable gated by `ALLOW_TEST_ADMIN` in `functions/.env`). Phase 9 removes it.
 
 ## Firebase
@@ -74,8 +85,10 @@ Summary; details in DEVELOPMENT_PLAN §4–§8.
 - Project `ramzan-clinic-web`, Firestore and Functions in `asia-south1`, Storage bucket in `us-central1` (not yet created on the live project), Blaze plan. `lib/firebase_options.dart` is generated; do not hand-edit.
 - The app talks to the live project in development unless `USE_EMULATORS=true`. All tests use the local Emulator Suite, never live data.
 - Rules are opened collection by collection per phase in `firestore.rules` and `storage.rules`; anything unmatched is denied. Add rules tests in `functions/test/rules.test.ts` with each new collection.
+- Composite indexes live in `firestore.indexes.json` (none yet): patient queries use a single `arrayContains` on `phones`/`searchKeys` and filter `deleted`/sort in the client on purpose. Add an index there, not in the console, when a query needs one.
+- Functions tests get emulator hosts and the project id from `functions/test/setup.ts`; `functions/.env` holds `ALLOW_TEST_ADMIN` and is read by the emulator and by deploys.
 - App IDs: `ramzan.shop.ramzan`. Launcher name and browser title: Clinic.
 
 ## Current status
 
-Phase 0 done. Phase 1 (Auth and users) and Phase 2 (Admin master data: settings, first-run setup, departments, doctors, visit types, fee grid, doctor picker in the user form) are built and verified as of 4 Nov 2026 (192 Flutter tests, 90 Functions/rules tests, 7 integration flows in two files). Both await owner screen review and the first deploy of Functions, Firestore rules and Storage rules. Next: Phase 3 (Patients and families). Phase list and per-phase status in DEVELOPMENT_PLAN §6.
+Phase 0 done. Phase 1 (Auth and users), Phase 2 (Admin master data) and Phase 3 (Patients and families: search, registration, patient page, family actions, patient-number and duplicate-phone triggers) are built and verified as of 4 Nov 2026 (241 Flutter tests, 107 Functions/rules tests, 9 integration flows in three files). All three await owner screen review and the first deploy of Functions, Firestore rules and Storage rules. Next: Phase 4 (Reception visit flow). Phase list and per-phase status in DEVELOPMENT_PLAN §6.

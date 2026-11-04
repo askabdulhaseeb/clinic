@@ -17,6 +17,9 @@ import 'features/auth/domain/repositories/dev_tools_repository.dart';
 import 'features/auth/presentation/viewmodels/session_controller.dart';
 import 'features/catalog/data/repositories/catalog_repository_impl.dart';
 import 'features/catalog/domain/repositories/catalog_repository.dart';
+import 'features/patients/data/repositories/patients_repository_impl.dart';
+import 'features/patients/domain/repositories/patients_repository.dart';
+import 'features/patients/presentation/viewmodels/patient_cache_controller.dart';
 import 'features/settings/data/repositories/settings_repository_impl.dart';
 import 'features/settings/domain/repositories/settings_repository.dart';
 import 'features/settings/presentation/viewmodels/settings_controller.dart';
@@ -53,6 +56,10 @@ Future<void> main() async {
           create: (_) =>
               CatalogRepositoryImpl(firestore: firestore, auth: auth),
         ),
+        Provider<PatientsRepository>(
+          create: (_) =>
+              PatientsRepositoryImpl(firestore: firestore, auth: auth),
+        ),
         Provider<SettingsRepository>(
           create: (_) => SettingsRepositoryImpl(
             firestore: firestore,
@@ -70,6 +77,15 @@ Future<void> main() async {
         ChangeNotifierProvider<SettingsController>(
           create: (context) => SettingsController(
             repository: context.read<SettingsRepository>(),
+            session: context.read<SessionController>(),
+          ),
+        ),
+        // Keeps families and patients cached for offline search while a
+        // reception user is signed in (FIREBASE_ARCHITECTURE §9).
+        ChangeNotifierProvider<PatientCacheController>(
+          lazy: false,
+          create: (context) => PatientCacheController(
+            repository: context.read<PatientsRepository>(),
             session: context.read<SessionController>(),
           ),
         ),

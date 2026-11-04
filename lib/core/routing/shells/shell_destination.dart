@@ -123,6 +123,13 @@ abstract final class ShellDestinations {
       path: AppRoutes.adminVisits,
     ),
     ShellDestination(
+      label: 'Patients',
+      icon: Icons.people_outline,
+      selectedIcon: Icons.people,
+      path: AppRoutes.adminPatients,
+      primary: false,
+    ),
+    ShellDestination(
       label: 'Inventory',
       icon: Icons.inventory_2_outlined,
       selectedIcon: Icons.inventory_2,

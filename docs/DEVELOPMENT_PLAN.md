@@ -1,6 +1,6 @@
 # Development Plan
 
-Draft v5 — 3 Nov 2026. v5: Phase 2 built (settings, catalog, first-run setup, doctor picker, shared integration helpers). v4: budget decisions (Storage bucket us-central1, no backup, typed-only prescriptions, incremental summaries) applied to phases and setup steps. Companion to [FEATURES.md](FEATURES.md) and [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md). This document fixes the technical choices for the Flutter code and the order in which features are built.
+Draft v6 — 4 Nov 2026. v6: Phase 3 built (families, patients, search, patient page, patient-number and duplicate-phone triggers, offline cache listeners). v5: Phase 2 built (settings, catalog, first-run setup, doctor picker, shared integration helpers). v4: budget decisions (Storage bucket us-central1, no backup, typed-only prescriptions, incremental summaries) applied to phases and setup steps. Companion to [FEATURES.md](FEATURES.md) and [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md). This document fixes the technical choices for the Flutter code and the order in which features are built.
 
 ---
 
@@ -176,7 +176,7 @@ Status 3 Nov 2026: built and verified on Chrome: 121 Flutter unit + widget tests
 - Functions: `createUser`, `setUserRoles`, `resetUserPassword` (custom claims).
 - Admin: user list (search, role filter, show inactive), create user, edit name and roles, deactivate and reactivate, reset password.
 - Rules: `users` collection, role helpers.
-- Local emulator run: `--dart-define=USE_EMULATORS=true` points the app at Auth 9099, Firestore 8080, Functions 5001. `node functions/scripts/seed-emulator.js` seeds three accounts (admin, first-login reception, multi-role). Integration test runs on Chrome via `tool/integration_test_web.sh` (ChromeDriver + emulators + `flutter drive`); see the header of `integration_test/login_flow_test.dart`. Decided 2 Nov 2026: integration tests run on web first (the reception platform); the macOS desktop target is not used.
+- Local emulator run: `--dart-define=USE_EMULATORS=true` points the app at Auth 9099, Firestore 8080, Functions 5001. `node functions/scripts/seed-emulator.js` seeds four accounts (admin, first-login reception, plain reception, multi-role) plus the catalog and one family. Integration test runs on Chrome via `tool/integration_test_web.sh` (ChromeDriver + emulators + `flutter drive`); see the header of `integration_test/login_flow_test.dart`. Decided 2 Nov 2026: integration tests run on web first (the reception platform); the macOS desktop target is not used.
 - Deferred to Phase 2: the doctor picker in the user form is a text field for the doctor record ID until the doctors collection exists.
 - Dev helper: debug-only **Create test admin** button on the login screen (`createTestAdmin` callable, see §1).
 
@@ -191,10 +191,15 @@ Status 3 Nov 2026: built. 192 Flutter unit + widget tests, 90 Functions/rules te
 - Integration helpers moved to `integration_test/support.dart`; `tool/integration_test_web.sh` now runs every `integration_test/*_test.dart` in name order inside one emulator session (with the Storage emulator).
 
 ### Phase 3 — Patients and families
-- Family lookup by phone, create family, add patient, move patient between families, change family phone (duplicate check function).
-- Patient search by name prefix and phone (offline).
-- Temp IDs offline, `assignPatientNo` function, counter per year.
-- Full patient history view (used by Doctor in Phase 5).
+Status 4 Nov 2026: built test-first (repository on fake Firestore, view models and widgets with mocks, triggers and rules on the emulator, one Chrome flow): 241 Flutter unit + widget tests, 107 Functions/rules tests, 9 integration flows in three files, all green headless on Chrome. Remaining before Phase 3 is called done: owner screen review and a Functions + rules deploy (owner).
+
+- Family lookup by phone, create family, add patient, move patient between families, change family phone (blocked online when another family has the number; `checkDuplicateFamilyPhone` flags offline clashes).
+- Patient search by phone (family or personal), patient number, temp number and name prefix, grouped by family. Offline: `PatientCacheController` keeps the `families` and `patients` listeners open for reception sessions.
+- Temp IDs (`T-XXXXX`) on the client; `assignPatientNo` trigger with a counter per Karachi year, idempotent on retried events.
+- Age entered as years is stored as an approximate date of birth (decided 4 Nov 2026, FEATURES §2).
+- Patient page (`/reception/patients/:id`, also under `/admin/patients`): header, family card with Add member / Edit family / Change phone / Move, Edit, WhatsApp link from the ad-hoc template; Visits, Reports and Appointments tabs are placeholders until Phases 4–6. The Doctor's history view (`/doctor/patients/:id`) arrives in Phase 5 on the same `PatientHeader`.
+- Rules for `families`, `patients` (functions-only fields locked) and `counters` (nobody). Seed adds `reception@clinic.test` and the Khan family.
+- Tests: `integration_test/reception_patients_flow_test.dart` (register family and patient, number assigned by the trigger, add member, change phone, move patient, search by phone and name).
 
 ### Phase 4 — Reception visit flow
 - New visit: patient → doctor → visit type → fee auto → discount + reason → payment method → token.

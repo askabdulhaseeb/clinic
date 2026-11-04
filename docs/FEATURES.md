@@ -1,6 +1,6 @@
 # Clinic Management App — Feature Specification
 
-**Status:** Draft v7 — 3 Nov 2026. v7: Phase 2 decisions (doctor–login link kept by Cloud Functions, first-run setup banner, editable department code, WhatsApp template placeholders). v6: budget decisions — prescriptions are typed only (no photos), no managed backup, dashboard totals kept by increments, Storage bucket in a US region for the no-cost quota. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
+**Status:** Draft v8 — 4 Nov 2026. v8: Phase 3 decisions (age stored as an approximate date of birth, family phone clash blocked when online, placeholder tabs on the patient page). v7: Phase 2 decisions (doctor–login link kept by Cloud Functions, first-run setup banner, editable department code, WhatsApp template placeholders). v6: budget decisions — prescriptions are typed only (no photos), no managed backup, dashboard totals kept by increments, Storage bucket in a US region for the no-cost quota. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
 **Project:** `ramzan` (Flutter). Clinic name is not hard-coded; Admin sets it in Settings and it appears on receipts and the app header.
 
 This document is the source of truth for what the app does. Code follows this document. Anything not written here is not a requirement yet.
@@ -56,6 +56,9 @@ Reception runs on the **web** at the front desk and must keep working **offline*
 | Doctor ↔ login link | Decided 3 Nov 2026. A doctor record is created first under Catalog → Doctors; the login is linked from the user form's doctor picker. One login per doctor. Cloud Functions keep `users.doctorId` and `doctors.userId` in step and refuse a doctor that is missing or already linked. |
 | First-run setup | Decided 3 Nov 2026. While clinic settings do not exist, Admin pages show a banner leading to an Initial setup page that creates the settings, the branch, the Eye and Homeopathy departments and their visit types. No forced redirect. |
 | Department code | Decided 3 Nov 2026. Editable after creation; the form warns that tokens issued from then on use the new prefix. Existing doctors of the department get the new code at once. |
+| Patient age | Decided 4 Nov 2026. Reception enters either a date of birth or an age in years. An age is stored as an approximate date of birth (1 January of the birth year) and shown as `~40 y`; a real date of birth gives the exact age. Editing shows the age back as a number. |
+| Family phone clash | Decided 4 Nov 2026. When online, changing a family phone to a number another family already uses is blocked with that family's head name; the right fix is to move the patients. Offline the change goes through and a Cloud Function flags both families as duplicates for Admin. |
+| Patient page in Phase 3 | Decided 4 Nov 2026. The patient page shows the family card, edit and WhatsApp now; the Visits, Reports and Appointments tabs are placeholders until Phases 4–6. The New visit and Book buttons in search results are disabled until then. |
 
 ---
 
@@ -122,11 +125,13 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 ## 5. Reception Features
 
 ### 5.1 Patient registration
-- Search by phone number. Shows the family and every patient under that phone.
-- Search by patient ID.
-- Add a new patient under an existing family, or create a new family.
-- Fields: name, age or date of birth, gender, address, notes.
-- Patient ID is generated automatically and printed on the receipt so the patient can bring it next time.
+- One search field. A phone number shows the family and every patient under it (family phone or a patient's personal phone); a patient ID (`26-00341`) or temporary ID (`T-7K3M9`) finds one patient; any other text is a name prefix search on every word of the name (at least two letters). Results are grouped by family; a family with no patients still appears.
+- **New patient** first asks for the family phone: if the family exists it offers "Add to this family", otherwise "New family" opens the registration form with the phone filled in. A family can also be added to from its header in the results or from the patient page.
+- Fields: family (phone, head of family, address) and patient (name, gender, age in years or date of birth, personal phone, address, notes). See the age decision in §2.
+- Patient ID is generated automatically when the record syncs and printed on the receipt so the patient can bring it next time. Until then the patient carries a temporary ID shown with a "pending" marker.
+- Patient page: header (name, age, gender, ID, phones), address and notes, family card (head, phone, other members, Add member, Edit family, Change phone, Move to another family), Edit, Send WhatsApp (ad-hoc template from Settings), and tabs for visits, reports and appointments.
+- Moving a patient re-homes them under another family's phone; changing a family phone updates every member. Two families registered with the same phone (possible offline) are marked "Duplicate phone" for Admin.
+- Admin has the same patient screens under Admin → Patients.
 
 ### 5.2 Walk-in visit
 1. Find or register the patient.

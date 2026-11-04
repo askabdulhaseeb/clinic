@@ -6,6 +6,7 @@ rules_version = '2';
 //
 // Phase 1: role helpers + `users`.
 // Phase 2: `branches`, `settings`, `departments`, `visitTypes`, `doctors`.
+// Phase 3: `families`, `patients` (`counters` stays Functions-only).
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -169,6 +170,64 @@ service cloud.firestore {
         && !changedKeys().hasAny(['userId', 'branchId', 'createdAt', 'createdBy'])
         && updatedByIsCaller();
       allow delete: if false;
+    }
+
+    function isReceptionOrAdmin() {
+      return isReception() || isAdmin();
+    }
+
+    // ----- families/{familyId}  (§4.7) ------------------------------------
+    // Reception and Admin write; `duplicatePhone` is set by the
+    // checkDuplicateFamilyPhone trigger only. Soft delete, never hard.
+    match /families/{familyId} {
+      allow read: if isSignedIn();
+      allow create: if isReceptionOrAdmin()
+        && isNonEmptyString(request.resource.data.phone)
+        && isNonEmptyString(request.resource.data.headName)
+        && request.resource.data.patientCount is int
+        && request.resource.data.duplicatePhone == false
+        && inCallerBranch(request.resource.data.branchId)
+        && createdByIsCaller();
+      allow update: if isReceptionOrAdmin()
+        && isNonEmptyString(request.resource.data.phone)
+        && isNonEmptyString(request.resource.data.headName)
+        && request.resource.data.patientCount is int
+        && !changedKeys().hasAny(['duplicatePhone', 'branchId', 'createdAt', 'createdAtLocal', 'createdBy'])
+        && updatedByIsCaller();
+      allow delete: if false;
+    }
+
+    // ----- patients/{patientId}  (§4.8) -----------------------------------
+    // `patientNo` is handed out by assignPatientNo; the client creates with
+    // null and may never change it or the temp number.
+    match /patients/{patientId} {
+      allow read: if isSignedIn();
+      allow create: if isReceptionOrAdmin()
+        && request.resource.data.patientNo == null
+        && isNonEmptyString(request.resource.data.tempNo)
+        && isNonEmptyString(request.resource.data.familyId)
+        && isNonEmptyString(request.resource.data.name)
+        && request.resource.data.gender in ['male', 'female', 'other']
+        && request.resource.data.phones is list
+        && request.resource.data.searchKeys is list
+        && request.resource.data.visitCount is int
+        && request.resource.data.deleted is bool
+        && inCallerBranch(request.resource.data.branchId)
+        && createdByIsCaller();
+      allow update: if isReceptionOrAdmin()
+        && isNonEmptyString(request.resource.data.familyId)
+        && isNonEmptyString(request.resource.data.name)
+        && request.resource.data.gender in ['male', 'female', 'other']
+        && request.resource.data.phones is list
+        && request.resource.data.deleted is bool
+        && !changedKeys().hasAny(['patientNo', 'tempNo', 'branchId', 'createdAt', 'createdAtLocal', 'createdBy'])
+        && updatedByIsCaller();
+      allow delete: if false;
+    }
+
+    // ----- counters/{counterId}  (§4.9): Functions only --------------------
+    match /counters/{counterId} {
+      allow read, write: if false;
     }
 
     // ----- catch-all: everything not matched above is denied ------------

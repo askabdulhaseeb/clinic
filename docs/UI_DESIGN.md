@@ -1,6 +1,6 @@
 # UI Design
 
-**Status:** Draft v2 — 3 Nov 2026 (Phase 2 screens: catalog tabs, forms, settings, first-run setup). Companion to [FEATURES.md](FEATURES.md) (what each screen does) and [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) (theme, packages, phases). This document fixes how screens are laid out and how users move between them. Screens are still reviewed one by one by the owner as they are built; this document is the starting point, not a pixel spec.
+**Status:** Draft v3 — 4 Nov 2026 (Phase 3 screens: patient search, registration form, patient page, family dialogs). v2 — 3 Nov 2026 (Phase 2 screens: catalog tabs, forms, settings, first-run setup). Companion to [FEATURES.md](FEATURES.md) (what each screen does) and [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) (theme, packages, phases). This document fixes how screens are laid out and how users move between them. Screens are still reviewed one by one by the owner as they are built; this document is the starting point, not a pixel spec.
 
 ---
 
@@ -100,8 +100,9 @@ Sidebar order: Patients, Visits, Queue, Appointments, Reminders, Sales, Summary.
 |---|---|---|
 | `/reception` | redirects to `/reception/visits` | 4 |
 | `/reception/patients` | Patient search (phone, patient ID, name) | 3 |
-| `/reception/patients/new` | New family + patient | 3 |
+| `/reception/patients/new?phone=` or `?familyId=` | New family + patient, or new patient under a family | 3 |
 | `/reception/patients/:id` | Patient detail: family members, visits, reports, appointments, WhatsApp button | 3 |
+| `/reception/patients/:id/edit` | Edit patient | 3 |
 | `/reception/visits` | Today's visits list, New visit button | 4 |
 | `/reception/visits/new?patientId=` | New visit wizard (patient → doctor → type → fee → discount → payment → token) | 4 |
 | `/reception/visits/:id` | Visit detail, receipt preview, reprint | 4 |
@@ -138,7 +139,7 @@ Bottom tabs: Dashboard, Visits, Inventory, Finance, More. Sidebar on desktop: Da
 | `/admin` | redirects to `/admin/dashboard` | 8 |
 | `/admin/dashboard` | KPI tiles, range picker, breakdown cards, low-stock alerts | 8 |
 | `/admin/visits` | Search any visit; edit or soft delete with reason | 8 |
-| `/admin/patients` and `/admin/patients/:id` | Same screens as Reception, re-used | 3 |
+| `/admin/patients`, `/admin/patients/new`, `/admin/patients/:id`, `/admin/patients/:id/edit` | Same screens as Reception, re-used (Patients sits under More on phones) | 3 |
 | `/admin/appointments` | Same as Reception | 6 |
 | `/admin/inventory` | Items by category tabs; lens grid tab | 7 |
 | `/admin/inventory/items/:id` | Item detail, stock movements, adjust stock | 7 |
@@ -165,7 +166,11 @@ Bottom tabs: Dashboard, Visits, Inventory, Finance, More. Sidebar on desktop: Da
 Centered card, clinic logo if cached, email, password, Sign in. Error text under the form. No self sign-up link. Debug builds only: a small **Create test admin** text button under Sign in (DEVELOPMENT_PLAN §1, Test admin) that creates or restores the fixed test admin and signs in with it.
 
 ### 4.2 Patient search (Reception)
-Single search field at the top that accepts a phone number, a patient ID (`26-00341`) or a name. Results grouped by family: family phone and head name as a header, patients as rows (name, age, gender, patient ID, last visit). Row actions: New visit, Book appointment, Open. Button "New patient" top right, which first asks for the phone and shows the family if it exists.
+Single search field at the top (autofocus, searches 300 ms after typing stops or on Enter) that accepts a phone number, a patient ID (`26-00341`), a temporary ID (`T-7K3M9`) or a name. Results grouped by family: a header card with head name, phone, address, a "Duplicate phone" chip when flagged, and an Add patient button; patients as rows (name, age, gender, number chip with a pending look for temp numbers, last visit). Row actions: New visit and Book appointment (disabled until Phases 4 and 6), Open. Button "New patient" top right, which first asks for the phone and shows the family if it exists ("Add to this family"), otherwise opens the new-family form with the phone filled in. A phone search with no result offers "Register new family".
+
+**Registration form** (`/reception/patients/new`): Family card (phone, head of family, address) when the family is new, otherwise a one-line family summary; Patient card (name, gender segmented button, "Age is known as" segmented button switching between an age field and a date-of-birth field with a picker, personal phone, address, notes). Register goes to the patient page.
+
+**Patient page** (`/reception/patients/:id`): header card (`PatientHeader`: name, age, gender, phones, number chip) with address and notes; on wide screens a family card on the left (head, phone, Add member, Change phone, Move to another family, Edit family, list of other members that open their pages) and a tabbed card on the right (Visits, Reports, Appointments; placeholders until Phases 4–6). Page actions: Send WhatsApp (opens `wa.me` with the ad-hoc template) and Edit. Move asks for the target family's phone, shows the family found, then confirms.
 
 ### 4.3 New visit wizard (Reception)
 One screen, vertical sections that enable in order. Desktop shows it as a two-column form with a live receipt summary on the right.

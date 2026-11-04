@@ -9,6 +9,9 @@ import '../../features/auth/presentation/viewmodels/session_controller.dart';
 import '../../features/catalog/presentation/screens/catalog_screen.dart';
 import '../../features/catalog/presentation/screens/doctor_form_screen.dart';
 import '../../features/catalog/presentation/screens/visit_type_form_screen.dart';
+import '../../features/patients/presentation/screens/patient_detail_screen.dart';
+import '../../features/patients/presentation/screens/patient_form_screen.dart';
+import '../../features/patients/presentation/screens/patient_search_screen.dart';
 import '../../features/settings/presentation/screens/initial_setup_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/settings/presentation/viewmodels/settings_controller.dart';
@@ -134,8 +137,38 @@ ShellRoute _roleShell(UserRole role) {
         else
           GoRoute(path: d.path, builder: (_, _) => _screenFor(d.path, d.label)),
       if (role == UserRole.admin) ..._adminRoutes(),
+      if (role == UserRole.admin || role == UserRole.reception)
+        ..._patientRoutes(role),
     ],
   );
+}
+
+/// Patient pages under `/<role>/patients` (Phase 3), shared by Reception
+/// and Admin. `new` is declared before `:id` so it is not taken for an id.
+List<GoRoute> _patientRoutes(UserRole role) {
+  final base = AppRoutes.patientsFor(role);
+  return [
+    GoRoute(
+      path: '$base/new',
+      builder: (_, state) => PatientFormScreen(
+        role: role,
+        familyId: state.uri.queryParameters['familyId'],
+        initialPhone: state.uri.queryParameters['phone'],
+      ),
+    ),
+    GoRoute(
+      path: '$base/:id',
+      builder: (_, state) => PatientDetailScreen(
+        role: role,
+        patientId: state.pathParameters['id']!,
+      ),
+    ),
+    GoRoute(
+      path: '$base/:id/edit',
+      builder: (_, state) =>
+          PatientFormScreen(role: role, patientId: state.pathParameters['id']),
+    ),
+  ];
 }
 
 /// Admin pages below the sidebar destinations (Phase 2: catalog, setup).
@@ -195,6 +228,10 @@ Widget _screenFor(String path, String label) {
       return const UsersScreen();
     case AppRoutes.adminSettings:
       return const SettingsScreen();
+    case AppRoutes.receptionPatients:
+      return const PatientSearchScreen(role: UserRole.reception);
+    case AppRoutes.adminPatients:
+      return const PatientSearchScreen(role: UserRole.admin);
     default:
       return PlaceholderScreen(title: label, embedded: true);
   }

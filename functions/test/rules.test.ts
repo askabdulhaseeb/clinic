@@ -16,6 +16,7 @@ const BOB = "bob-uid";
 
 const adminToken = { roles: ["admin"], doctorId: null, branchIds: ["main"] };
 const receptionToken = { roles: ["reception"], doctorId: null, branchIds: ["main"] };
+const doctorToken = { roles: ["doctor"], doctorId: "d1", branchIds: ["main"] };
 
 let env: RulesTestEnvironment;
 
@@ -65,6 +66,7 @@ const asAlice = () => env.authenticatedContext(ALICE, receptionToken).firestore(
 // Signed in but with no roles claim at all.
 const asNoClaims = () => env.authenticatedContext("noclaims-uid").firestore();
 const asAnon = () => env.unauthenticatedContext().firestore();
+const asDoctor = () => env.authenticatedContext("doctor-uid", doctorToken).firestore();
 
 describe("users read", () => {
   it("own doc allowed", async () => {
@@ -333,9 +335,148 @@ describe("master data write", () => {
 
 describe("other collections", () => {
   it("denied even for admin", async () => {
-    await assertFails(asAdmin().doc("patients/p1").get());
-    await assertFails(asAdmin().doc("patients/p1").set({ name: "x" }));
+    await assertFails(asAdmin().doc("visits/v1").get());
+    await assertFails(asAdmin().doc("visits/v1").set({ name: "x" }));
     await assertFails(asAlice().collection("visits").get());
     await assertFails(asAnon().doc("settings/general").get());
+  });
+});
+
+// ----- Phase 3: families, patients, counters (§4.7–§4.9) -------------------
+
+const family = (by: string) => ({
+  phone: "03001234567",
+  headName: "Khan",
+  address: "",
+  patientCount: 0,
+  duplicatePhone: false,
+  branchId: "main",
+  createdAt: new Date(),
+  createdAtLocal: new Date(),
+  createdBy: by,
+  updatedAt: new Date(),
+  updatedBy: by,
+});
+
+const patient = (by: string) => ({
+  patientNo: null,
+  tempNo: "T-AAAAA",
+  familyId: "f1",
+  name: "Ali Khan",
+  gender: "male",
+  dateOfBirth: "1986-01-01",
+  dobApproximate: true,
+  personalPhone: null,
+  phones: ["03001234567"],
+  address: "",
+  notes: "",
+  searchKeys: ["a", "al", "ali"],
+  visitCount: 0,
+  lastVisitAt: null,
+  lastDoctorId: null,
+  deleted: false,
+  branchId: "main",
+  createdAt: new Date(),
+  createdAtLocal: new Date(),
+  createdBy: by,
+  updatedAt: new Date(),
+  updatedBy: by,
+});
+
+describe("families and patients read", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("families/f1").set(family(ADMIN));
+      await ctx.firestore().doc("patients/p1").set(patient(ADMIN));
+    });
+  });
+  it("any signed-in role reads and lists", async () => {
+    await assertSucceeds(asAlice().doc("families/f1").get());
+    await assertSucceeds(asDoctor().doc("patients/p1").get());
+    await assertSucceeds(asAdmin().collection("patients").get());
+    await assertSucceeds(
+      asAlice().collection("patients").where("phones", "array-contains", "03001234567").get()
+    );
+  });
+  it("anonymous denied", async () => {
+    await assertFails(asAnon().doc("families/f1").get());
+    await assertFails(asAnon().collection("patients").get());
+  });
+});
+
+describe("families and patients write", () => {
+  it("reception and admin create with createdBy = self", async () => {
+    await assertSucceeds(asAlice().doc("families/f1").set(family(ALICE)));
+    await assertSucceeds(asAlice().doc("patients/p1").set(patient(ALICE)));
+    await assertSucceeds(asAdmin().doc("families/f2").set(family(ADMIN)));
+    await assertSucceeds(asAdmin().doc("patients/p2").set(patient(ADMIN)));
+  });
+  it("doctor, anonymous and wrong createdBy denied", async () => {
+    await assertFails(asDoctor().doc("families/f1").set(family("doctor-uid")));
+    await assertFails(asDoctor().doc("patients/p1").set(patient("doctor-uid")));
+    await assertFails(asAnon().doc("patients/p1").set(patient("anon")));
+    await assertFails(asAlice().doc("families/f1").set(family(BOB)));
+    await assertFails(asAlice().doc("patients/p1").set(patient(BOB)));
+  });
+  it("shape checks on create", async () => {
+    await assertFails(asAlice().doc("families/f1").set({ ...family(ALICE), phone: "" }));
+    await assertFails(asAlice().doc("families/f1").set({ ...family(ALICE), headName: "" }));
+    await assertFails(asAlice().doc("families/f1").set({ ...family(ALICE), duplicatePhone: true }));
+    await assertFails(asAlice().doc("families/f1").set({ ...family(ALICE), branchId: "other" }));
+    await assertFails(asAlice().doc("patients/p1").set({ ...patient(ALICE), name: "" }));
+    await assertFails(asAlice().doc("patients/p1").set({ ...patient(ALICE), familyId: "" }));
+    await assertFails(asAlice().doc("patients/p1").set({ ...patient(ALICE), tempNo: "" }));
+    await assertFails(asAlice().doc("patients/p1").set({ ...patient(ALICE), gender: "x" }));
+    await assertFails(asAlice().doc("patients/p1").set({ ...patient(ALICE), phones: "0300" }));
+    await assertFails(asAlice().doc("patients/p1").set({ ...patient(ALICE), deleted: "no" }));
+    await assertFails(asAlice().doc("patients/p1").set({ ...patient(ALICE), branchId: "other" }));
+    // The number is assigned by the function, never by the client.
+    await assertFails(asAlice().doc("patients/p1").set({ ...patient(ALICE), patientNo: "26-00001" }));
+  });
+  it("reception updates with updatedBy = self; functions-only fields locked", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("families/f1").set(family(ADMIN));
+      await ctx.firestore().doc("patients/p1").set({ ...patient(ADMIN), patientNo: "26-00001" });
+    });
+    await assertSucceeds(
+      asAlice().doc("patients/p1").update({ name: "Ali Raza", searchKeys: ["ali"], updatedBy: ALICE })
+    );
+    await assertSucceeds(
+      asAlice().doc("patients/p1").update({ familyId: "f2", phones: ["03009999999"], updatedBy: ALICE })
+    );
+    await assertSucceeds(
+      asAlice().doc("patients/p1").update({ deleted: true, deleteReason: "Duplicate", updatedBy: ALICE })
+    );
+    await assertSucceeds(
+      asAlice().doc("families/f1").update({ phone: "03009999999", patientCount: 3, updatedBy: ALICE })
+    );
+    await assertFails(asAlice().doc("patients/p1").update({ name: "X", updatedBy: BOB }));
+    await assertFails(asAlice().doc("patients/p1").update({ patientNo: "26-00009", updatedBy: ALICE }));
+    await assertFails(asAlice().doc("patients/p1").update({ tempNo: "T-ZZZZZ", updatedBy: ALICE }));
+    await assertFails(asAlice().doc("patients/p1").update({ createdBy: ALICE, updatedBy: ALICE }));
+    await assertFails(asAlice().doc("patients/p1").update({ branchId: "b2", updatedBy: ALICE }));
+    await assertFails(asAlice().doc("patients/p1").update({ name: "", updatedBy: ALICE }));
+    await assertFails(asAlice().doc("families/f1").update({ duplicatePhone: true, updatedBy: ALICE }));
+    await assertFails(asAlice().doc("families/f1").update({ phone: "", updatedBy: ALICE }));
+    await assertFails(asDoctor().doc("patients/p1").update({ name: "X", updatedBy: "doctor-uid" }));
+  });
+  it("nobody deletes", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("families/f1").set(family(ADMIN));
+      await ctx.firestore().doc("patients/p1").set(patient(ADMIN));
+    });
+    await assertFails(asAdmin().doc("families/f1").delete());
+    await assertFails(asAdmin().doc("patients/p1").delete());
+  });
+});
+
+describe("counters", () => {
+  it("nobody reads or writes, not even admin", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("counters/patients_26").set({ value: 3 });
+    });
+    await assertFails(asAdmin().doc("counters/patients_26").get());
+    await assertFails(asAdmin().doc("counters/patients_26").set({ value: 4 }));
+    await assertFails(asAlice().doc("counters/patients_26").update({ value: 4 }));
   });
 });

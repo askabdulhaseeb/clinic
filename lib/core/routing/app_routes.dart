@@ -18,6 +18,10 @@ abstract final class AppRoutes {
 
   // Reception sections (screens arrive in Phases 3-7).
   static const String receptionPatients = '/reception/patients';
+  static const String receptionPatientNew = '/reception/patients/new';
+  static const String receptionPatientPattern = '/reception/patients/:id';
+  static const String receptionPatientEditPattern =
+      '/reception/patients/:id/edit';
   static const String receptionVisits = '/reception/visits';
   static const String receptionQueue = '/reception/queue';
   static const String receptionAppointments = '/reception/appointments';
@@ -34,6 +38,11 @@ abstract final class AppRoutes {
   // Admin sections.
   static const String adminDashboard = '/admin/dashboard';
   static const String adminUsers = '/admin/users';
+  // Admin re-uses the Reception patient screens (UI_DESIGN §3.4, Phase 3).
+  static const String adminPatients = '/admin/patients';
+  static const String adminPatientNew = '/admin/patients/new';
+  static const String adminPatientPattern = '/admin/patients/:id';
+  static const String adminPatientEditPattern = '/admin/patients/:id/edit';
   static const String adminVisits = '/admin/visits';
   static const String adminInventory = '/admin/inventory';
   static const String adminFinance = '/admin/finance';
@@ -56,6 +65,26 @@ abstract final class AppRoutes {
   static const String adminSetup = '/admin/setup';
 
   static String adminCatalogDoctor(String id) => '$adminCatalogDoctors/$id';
+
+  // Patient pages exist under Reception and Admin with the same screens.
+  static String patientsFor(UserRole role) => '${rootFor(role)}/patients';
+
+  /// `/<role>/patients/new`, optionally with the phone typed in the search
+  /// (new family) or the family to add the patient to.
+  static String patientNewFor(
+    UserRole role, {
+    String? phone,
+    String? familyId,
+  }) => Uri(
+    path: '${patientsFor(role)}/new',
+    queryParameters: {'phone': ?phone, 'familyId': ?familyId},
+  ).toString();
+
+  static String patientFor(UserRole role, String id) =>
+      '${patientsFor(role)}/$id';
+
+  static String patientEditFor(UserRole role, String id) =>
+      '${patientsFor(role)}/$id/edit';
 
   static String adminCatalogVisitType(String id) =>
       '$adminCatalogVisitTypes/$id';
