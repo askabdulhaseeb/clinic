@@ -1,6 +1,6 @@
 # Development Plan
 
-Draft v4 — 31 Oct 2026. v4: budget decisions (Storage bucket us-central1, no backup, typed-only prescriptions, incremental summaries) applied to phases and setup steps. Companion to [FEATURES.md](FEATURES.md) and [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md). This document fixes the technical choices for the Flutter code and the order in which features are built.
+Draft v5 — 3 Nov 2026. v5: Phase 2 built (settings, catalog, first-run setup, doctor picker, shared integration helpers). v4: budget decisions (Storage bucket us-central1, no backup, typed-only prescriptions, incremental summaries) applied to phases and setup steps. Companion to [FEATURES.md](FEATURES.md) and [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md). This document fixes the technical choices for the Flutter code and the order in which features are built.
 
 ---
 
@@ -22,7 +22,9 @@ Draft v4 — 31 Oct 2026. v4: budget decisions (Storage bucket us-central1, no b
 | Automated tests | Full: unit tests (domain + view models), widget tests (every screen), integration tests (key flows). Firestore rules tests on the emulator. |
 | App identifier | `ramzan.shop.ramzan` for Android package and iOS bundle ID. Android minSdk 23, iOS 15.0. |
 | Cloud Functions runtime | 2nd gen, TypeScript, Node 22 runtime (local Node 24 is fine for tooling). |
+| Test admin (dev only) | Decided 2 Nov 2026: the login screen shows a **Create test admin** button in debug builds only (`kDebugMode`). It calls `createTestAdmin`, which creates or restores `admin@mytester.com` / `1234567890` as an active admin, then signs in. The function only works while `functions/.env` has `ALLOW_TEST_ADMIN=true`. Phase 9 turns it off and deletes the account. Needs the function deployed (owner) to work against the live project; works on the emulators today. |
 | Version control | Git initialised by the owner on 31 Oct 2026, branch `main`. Commit at the end of each phase at least. |
+| Phase 2 decisions (3 Nov 2026) | Doctor ↔ login link is kept by `createUser` / `setUserRoles` (one login per doctor; the user form has a doctor picker, the doctor form shows the link read-only). First run: banner on Admin pages plus `/admin/setup`, no forced redirect. Department code editable with a warning; doctors' `departmentCode` is rewritten in the same batch. Logo upload goes through a `FileStore` abstraction (`core/storage/file_store.dart`) so tests use an in-memory store. Catalog screens share loading state through the `CatalogData` mixin; each list screen has a dialog (departments) or a full page with `PageHeader` (doctors, visit types). |
 
 ---
 
@@ -75,11 +77,12 @@ lib/
     widgets/                    # shared widgets (money text, date picker, empty state, confirm dialog)
     utils/                      # karachi_date.dart, money.dart, search_keys.dart, phone.dart
     errors/                     # Failure types, error mapping
+    storage/                    # key_value_store.dart (preferences), file_store.dart (Cloud Storage uploads)
   features/
     auth/                       # login, mustChangePassword, current user + roles
-    settings/                   # settings/general, logo upload, receipt copies, WhatsApp toggles
-    users/                      # Admin: user list, create, roles (calls createUser/setUserRoles)
-    catalog/                    # departments, doctors (fees, salary, share), visitTypes
+    settings/                   # settings/general, logo upload, first-run setup, SettingsController
+    users/                      # Admin: user list, create, roles, doctor picker (calls createUser/setUserRoles)
+    catalog/                    # departments, doctors (fees, salary, share), visitTypes, fee grid
     patients/                   # families, patients, registration, search, temp IDs
     visits/                     # visit creation, tokens, discount, payment, queue, receipt PDF
     appointments/               # appointments, due-today list, WhatsApp link
@@ -167,15 +170,25 @@ Status 31 Oct 2026: Firebase init done by hand (same files `firebase init` write
 - Enable Firestore offline persistence on web (`persistentLocalCache`).
 
 ### Phase 1 — Auth and users
-- Login screen, forced password change, role-based landing (Reception / Doctor / Admin shells).
-- Functions: `createUser`, `setUserRoles` (custom claims).
-- Admin: user list, create user, edit roles, deactivate.
+Status 3 Nov 2026: built and verified on Chrome: 121 Flutter unit + widget tests (also run with `--platform chrome`), 79 Functions/rules tests, 5 integration flows green via `tool/integration_test_web.sh` (wrong password, admin creates a user and signs out, forced first-login password change and change by choice, dev test-admin button, role switch). Integration testing found and fixed three app bugs: forced password change never left the screen, a user-document update dropped pushed pages (session now notifies only on visible change), and the user form notified a disposed view model. Remaining before Phase 1 is called done: owner screen review and the first Functions + rules deploy (owner).
+
+- Login screen, forced password change, role-based landing (Reception / Doctor / Admin shells with sidebar, rail or bottom bar by width; role switcher for multi-role users).
+- Functions: `createUser`, `setUserRoles`, `resetUserPassword` (custom claims).
+- Admin: user list (search, role filter, show inactive), create user, edit name and roles, deactivate and reactivate, reset password.
 - Rules: `users` collection, role helpers.
+- Local emulator run: `--dart-define=USE_EMULATORS=true` points the app at Auth 9099, Firestore 8080, Functions 5001. `node functions/scripts/seed-emulator.js` seeds three accounts (admin, first-login reception, multi-role). Integration test runs on Chrome via `tool/integration_test_web.sh` (ChromeDriver + emulators + `flutter drive`); see the header of `integration_test/login_flow_test.dart`. Decided 2 Nov 2026: integration tests run on web first (the reception platform); the macOS desktop target is not used.
+- Deferred to Phase 2: the doctor picker in the user form is a text field for the doctor record ID until the doctors collection exists.
+- Dev helper: debug-only **Create test admin** button on the login screen (`createTestAdmin` callable, see §1).
 
 ### Phase 2 — Admin master data
-- Settings: clinic name, logo, default receipt copies, WhatsApp reminder toggles and templates.
-- Departments (name, code), doctors (salary, share %, share basis, fee grid), visit types (operation flag, follow-up flag, default checklist, post-op days).
-- Seed script for first Admin + two departments.
+Status 3 Nov 2026: built. 192 Flutter unit + widget tests, 90 Functions/rules tests, and a second Chrome integration file (`integration_test/admin_setup_flow_test.dart`: first-run setup and settings save; department, doctor, fee grid row save, doctor login through the picker, link shown on the doctor form). Remaining before Phase 2 is called done: owner screen review, and a Functions + rules + storage rules deploy (owner). Note: the live Storage bucket (§3 step 5) is still to be created; the logo upload works on the emulator today.
+
+- Settings: clinic name, logo, address, phone, receipt footer, default receipt copies, follow-up reminder days, WhatsApp reminder toggles and templates with placeholders.
+- Departments (name, code), doctors (department, specialisation, salary, share %, share basis, fee row), visit types (operation flag, follow-up flag, default checklist, post-op days), fee grid per department with Save row.
+- First-run setup page (`/admin/setup`) reached from a banner; creates branch, settings, two departments and five visit types. Emulator seed extended with the same catalog and a doctor linked to the multi-role account.
+- User form: the doctor record ID text field became a picker of unlinked active doctors; `createUser` / `setUserRoles` maintain `doctors.userId`.
+- Rules for `branches`, `settings`, `departments`, `visitTypes`, `doctors`; Storage rule for `clinic/logo.png`.
+- Integration helpers moved to `integration_test/support.dart`; `tool/integration_test_web.sh` now runs every `integration_test/*_test.dart` in name order inside one emulator session (with the Storage emulator).
 
 ### Phase 3 — Patients and families
 - Family lookup by phone, create family, add patient, move patient between families, change family phone (duplicate check function).
@@ -214,6 +227,7 @@ Status 31 Oct 2026: Firebase init done by hand (same files `firebase init` write
 - Visit corrections and soft delete (Admin).
 
 ### Phase 9 — Hardening and release
+- Remove the dev test admin: set `ALLOW_TEST_ADMIN=false` in `functions/.env`, redeploy, delete `admin@mytester.com`.
 - Audit log functions and Admin viewer.
 - App Check, composite indexes deployed, Firestore TTL policy on `summaryEvents.expiresAt`.
 - Hosting deploy for web, Android release build, iOS build.
@@ -228,7 +242,7 @@ Status 31 Oct 2026: Firebase init done by hand (same files `firebase init` write
 | Unit | Use cases, view models, utils (fee math, token, patient number, search keys, Karachi dates, summary deltas) | `flutter_test`, `mocktail` | Local, no Firebase |
 | Data | Repositories against in-memory Firestore | `fake_cloud_firestore` | Local |
 | Widget | Every screen with mocked view models: renders, validation, role visibility | `flutter_test` | Local |
-| Integration | Login → create visit → print receipt; offline visit creation; doctor prescription; sale | `integration_test` on Chrome and Android emulator | Firestore **emulator** with seed data |
+| Integration | Login → create visit → print receipt; offline visit creation; doctor prescription; sale | `integration_test` on Chrome via `tool/integration_test_web.sh` (`flutter drive -d web-server` + ChromeDriver); Android emulator later. Never `pumpAndSettle` (focused fields never settle on web): poll with the `waitFor` helpers in `integration_test/login_flow_test.dart`. | Firestore **emulator** with seed data |
 | Rules | Allow/deny matrix per collection from FIREBASE_ARCHITECTURE §6 | `@firebase/rules-unit-testing` | Emulator |
 | Functions | Each function with emulated Firestore | Jest | Emulator |
 
@@ -251,5 +265,8 @@ Coverage is not a target number. Every phase's listed flows must have a test bef
 
 1. **Theme colour editable by Admin** was not chosen. Teal is fixed in code for v1.
 2. **Google Analytics** on the Firebase project is optional and unused by the app.
+3. **Shell online/offline badge (`SyncBadge`)**: UI_DESIGN §2 puts it in the top bar, but the pending-write count it shows comes from the offline visit flow. Not built in Phase 1; owner to pick: build in Phase 4 with the offline work (proposed), or add an online-only badge now.
+4. **Sidebar version footer** (`v1.0.0` in UI_DESIGN §2.1) is not shown yet; needs `package_info_plus` or a build-time constant. Owner to confirm it is wanted.
+5. **macOS desktop integration run** (`flutter test integration_test -d macos`) signs in but never reaches the role home on 2 Nov 2026; not investigated because tests run on Chrome (see Phase 1). Revisit only if a desktop target is ever needed.
 
 Resolved 31 Oct 2026: integration tests run on the Firestore emulator, never on the live project (see §1 Test backend).

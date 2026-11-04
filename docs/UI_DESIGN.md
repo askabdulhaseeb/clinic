@@ -1,6 +1,6 @@
 # UI Design
 
-**Status:** Draft v1 — 31 Oct 2026. Companion to [FEATURES.md](FEATURES.md) (what each screen does) and [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) (theme, packages, phases). This document fixes how screens are laid out and how users move between them. Screens are still reviewed one by one by the owner as they are built; this document is the starting point, not a pixel spec.
+**Status:** Draft v2 — 3 Nov 2026 (Phase 2 screens: catalog tabs, forms, settings, first-run setup). Companion to [FEATURES.md](FEATURES.md) (what each screen does) and [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) (theme, packages, phases). This document fixes how screens are laid out and how users move between them. Screens are still reviewed one by one by the owner as they are built; this document is the starting point, not a pixel spec.
 
 ---
 
@@ -51,7 +51,7 @@
 ```
 
 - Sidebar width 240 px, section links with icon and label, selected item filled with primary container colour.
-- Top bar: clinic name and logo come from Settings. Role switcher appears only for users with more than one role. User menu: change password, sign out.
+- Top bar: clinic name and logo come from Settings (`SettingsController`; "Clinic" and a hospital icon until setup runs). Role switcher appears only for users with more than one role. User menu: change password, sign out.
 - Widths 600–1023 show the same sidebar as a 72 px rail with icons only; labels on hover tooltip.
 
 ### 2.2 Mobile shell (width < 600)
@@ -86,9 +86,11 @@ Route paths live in `lib/core/routing/app_routes.dart`. Only `login`, `changePas
 | Path | Screen | Phase |
 |---|---|---|
 | `/login` | Login | 1 |
-| `/change-password` | Forced password change on first login | 1 |
+| `/change-password` | Change password. First login is forced here as `/change-password?forced=1`; once `mustChangePassword` clears the router moves on to the role home. Without the marker (opened from the user menu) the screen stays until the user leaves. | 1 |
 
 After login: redirect to the last used role's home, or the single role's home. Signed-out users hitting any other path go to `/login` and return after login.
+
+Return-after-login mechanics (decided 2 Nov 2026): the wanted page travels as a `from` query parameter while the session is unknown or signed out, e.g. `/?from=%2Fadmin%2Fusers` then `/login?from=%2Fadmin%2Fusers`. Only paths under a role root are remembered, never `/`, `/login` or `/change-password`, and never absolute URLs. After sign-in the user lands on `from` if they hold that role, otherwise on the active role's home. A forced password change still comes first and drops `from`.
 
 ### 3.2 Reception (`/reception`)
 
@@ -146,12 +148,13 @@ Bottom tabs: Dashboard, Visits, Inventory, Finance, More. Sidebar on desktop: Da
 | `/admin/finance/payouts` and `/new` | Doctor payouts by date range | 8 |
 | `/admin/reports` | Date-range reports with CSV and PDF export | 8 |
 | `/admin/users` | Users, create, roles, deactivate, reset password | 1 |
-| `/admin/catalog/departments` | Departments | 2 |
-| `/admin/catalog/doctors` and `/:id` | Doctors, salary, share, fee row | 2 |
-| `/admin/catalog/fees` | Fee grid: doctors × visit types | 2 |
-| `/admin/catalog/visit-types` and `/:id` | Visit types, operation defaults (checklist, post-op days) | 2 |
-| `/admin/settings` | Clinic settings, logo, receipt, WhatsApp toggles and templates | 2 |
-| `/admin/setup` | Initial setup (seed), shown only when `settings/general` is missing | 2 |
+| `/admin/catalog` | redirects to `/admin/catalog/departments` | 2 |
+| `/admin/catalog/departments` | Departments tab: table (name, code chip, status), New department dialog, edit dialog with code-change warning | 2 |
+| `/admin/catalog/doctors`, `/new`, `/:id` | Doctors tab: table (name, department, specialisation, salary, share, login link, status), search, department filter; full-page form (doctor, pay, fees cards) with `PageHeader` back | 2 |
+| `/admin/catalog/fees` | Fee grid: doctors × visit types, department segments, Save row | 2 |
+| `/admin/catalog/visit-types`, `/new?departmentId=`, `/:id` | Visit types tab: table (kind, operation defaults); full-page form with follow-up / operation switches, checklist list and post-op day chips | 2 |
+| `/admin/settings` | Clinic settings: Clinic, Receipts and WhatsApp reminders cards, logo upload, Save FAB | 2 |
+| `/admin/setup` | Initial setup card (clinic name, address, phone, what will be created). Reachable only while `settings/general` is missing; otherwise redirects to the dashboard. Admin pages show a `MaterialBanner` with a "Run setup" button while settings are missing (decided 3 Nov 2026: banner, no forced redirect) | 2 |
 | `/admin/audit` | Audit log with filters | 9 |
 
 ---
@@ -159,7 +162,7 @@ Bottom tabs: Dashboard, Visits, Inventory, Finance, More. Sidebar on desktop: Da
 ## 4. Key Screens
 
 ### 4.1 Login
-Centered card, clinic logo if cached, email, password, Sign in. Error text under the form. No self sign-up link.
+Centered card, clinic logo if cached, email, password, Sign in. Error text under the form. No self sign-up link. Debug builds only: a small **Create test admin** text button under Sign in (DEVELOPMENT_PLAN §1, Test admin) that creates or restores the fixed test admin and signs in with it.
 
 ### 4.2 Patient search (Reception)
 Single search field at the top that accepts a phone number, a patient ID (`26-00341`) or a name. Results grouped by family: family phone and head name as a header, patients as rows (name, age, gender, patient ID, last visit). Row actions: New visit, Book appointment, Open. Button "New patient" top right, which first asks for the phone and shows the family if it exists.
@@ -224,7 +227,13 @@ Header: patient, operation type, surgeon, scheduled date picker, status chip. Ch
 Range picker (Today, This week, This month, Custom). Row of KPI tiles: Revenue, Visits, New patients, Discounts, Expenses, Net profit. Below: revenue by department and by doctor (bar), by payment method (stacked bar), visits per day (line). Low-stock list card. Everything reads `dailySummaries`.
 
 ### 4.9 Fee grid (Admin)
-Table with doctors as rows and the department's visit types as columns, amount cells editable inline, Save row. Department tabs at the top since visit types are per department.
+Table with doctors as rows and the department's active visit types as columns (follow-up column labelled "(reduced)"), amount cells editable inline, Save row button enabled only when the row changed, undo icon discards. Department segments at the top since visit types are per department; switching discards unsaved edits.
+
+### 4.9a Catalog (Admin)
+`/admin/catalog/*` share a `TabBar` (Departments, Doctors, Visit types, Fees) whose tabs are routes. Lists follow the Users screen pattern: `DataTable` on desktop, `ListTile` on phones, a row menu with Edit and Deactivate / Reactivate (confirm dialog on deactivate), "Show inactive" filter chip. Departments edit in a dialog; doctors and visit types open a full page inside the shell with a `PageHeader` (back arrow, title) and a Save FAB.
+
+### 4.9b Settings and first run (Admin)
+Settings is one scrolling form in three cards (Clinic with logo row, Receipts, WhatsApp reminders with a switch above each template; a switched-off template is disabled). Save FAB bottom right; snackbar "Settings saved". Initial setup is a centered card listing what will be created, with a single "Run setup" button; on success it goes to the dashboard and the banner disappears.
 
 ### 4.10 Lens grid (Admin, Reception sale picker)
 Tabs per lens type. Grid with SPH down the side and CYL across the top; each cell shows stock on hand, red tint at or below the low-stock threshold, grey when the item does not exist. Tapping a cell opens the item or, in the sale picker, adds that lens to the sale. The sale picker pre-highlights the cell matching the patient's latest eye prescription.
@@ -248,7 +257,9 @@ Three sections: Appointments tomorrow, Follow-ups due, Post-op follow-ups due. E
 | `PatientHeader` | Name, age, gender, patient ID, phone. Used by visit, consultation, sale. |
 | `DepartmentChip` | Department name in its colour. |
 | `AdaptiveList` | Table on desktop, cards on phones, from one row model. |
-| `AppShell` | Sidebar / rail / bottom bar by width, takes the role's destination list. |
+| `AppShell` | Sidebar / rail / bottom bar by width, takes the role's destination list. Shows the first-run banner on Admin pages. |
+| `PageHeader` | Back arrow, title and actions for detail / form pages inside the shell. |
+| `ActiveChip` | "Active" / "Inactive" for master-data rows. |
 
 ---
 

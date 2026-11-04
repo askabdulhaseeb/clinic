@@ -1,6 +1,6 @@
 # Clinic Management App — Feature Specification
 
-**Status:** Draft v6 — 31 Oct 2026. All requirement questions resolved; Eye prescription form design deferred to UI phase. v6: budget decisions — prescriptions are typed only (no photos), no managed backup, dashboard totals kept by increments, Storage bucket in a US region for the no-cost quota. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
+**Status:** Draft v7 — 3 Nov 2026. v7: Phase 2 decisions (doctor–login link kept by Cloud Functions, first-run setup banner, editable department code, WhatsApp template placeholders). v6: budget decisions — prescriptions are typed only (no photos), no managed backup, dashboard totals kept by increments, Storage bucket in a US region for the no-cost quota. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
 **Project:** `ramzan` (Flutter). Clinic name is not hard-coded; Admin sets it in Settings and it appears on receipts and the app header.
 
 This document is the source of truth for what the app does. Code follows this document. Anything not written here is not a requirement yet.
@@ -53,6 +53,9 @@ Reception runs on the **web** at the front desk and must keep working **offline*
 | Old data | None. New clinic, start fresh. |
 | Reception devices | One reception device for now. Offline token conflicts between devices are not handled in v1. |
 | Doctor sees money | Yes. Doctor sees fee, discount, and net paid on each visit. |
+| Doctor ↔ login link | Decided 3 Nov 2026. A doctor record is created first under Catalog → Doctors; the login is linked from the user form's doctor picker. One login per doctor. Cloud Functions keep `users.doctorId` and `doctors.userId` in step and refuse a doctor that is missing or already linked. |
+| First-run setup | Decided 3 Nov 2026. While clinic settings do not exist, Admin pages show a banner leading to an Initial setup page that creates the settings, the branch, the Eye and Homeopathy departments and their visit types. No forced redirect. |
+| Department code | Decided 3 Nov 2026. Editable after creation; the form warns that tokens issued from then on use the new prefix. Existing doctors of the department get the new code at once. |
 
 ---
 
@@ -222,10 +225,11 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - Deactivate users. Reset passwords.
 
 ### 7.3 Doctors and departments
-- Add, edit, deactivate departments.
-- Add, edit, deactivate doctors. Set salary, revenue share percentage, and share basis: gross fee or net fee after discount.
-- Fee schedule grid: doctors as rows, visit types as columns, amount per cell. Follow-up fee column included.
-- Operation types: default pre-op checklist and default post-op follow-up days per type. Doctors can also edit these from their side.
+- Add, edit, deactivate departments. Code is 1 to 3 letters, unique, editable with a warning (see §2).
+- Add, edit, deactivate doctors. Set department, specialisation, salary, revenue share percentage (decimals allowed, 0 to 100), and share basis: gross fee or net fee after discount. The doctor form also sets that doctor's fee per visit type of its department. Login linking is done from the user form (§7.2), which lists active doctors that have no login yet.
+- Fee schedule grid: doctors as rows, visit types as columns, amount per cell. Follow-up fee column included. Saved one row at a time.
+- Visit types per department with flags: follow-up (reduced fee) or operation. Operation types: default pre-op checklist and default post-op follow-up days per type. Doctors can also edit these from their side (Phase 5).
+- Deactivation only, no deletes. Inactive records are hidden from pickers and lists unless "Show inactive" is on.
 
 ### 7.4 Visits and corrections
 - Search any visit. Edit fee, discount, payment method, doctor, or delete. Every change is written to the audit log with the reason.
@@ -251,9 +255,10 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - Export any report to Excel (CSV) and PDF.
 
 ### 7.8 Settings
-- Clinic name, logo, address, phone, receipt footer, default receipt copy count.
-- Follow-up reminder days.
-- WhatsApp reminders: on or off per reminder type (appointment, follow-up, post-op), and the message template for each.
+- Clinic name, logo (PNG or JPG up to 2 MB), address, phone, receipt footer, default receipt copy count (1 to 5).
+- Follow-up reminder days (0 to 30): how many days before a follow-up date it appears on the reminders list.
+- WhatsApp reminders: on or off per reminder type (appointment, follow-up, post-op), and the message template for each, plus an ad-hoc template for the Send WhatsApp button on a patient. Templates may use the placeholders `{patient}`, `{doctor}`, `{date}`, `{time}` and `{clinic}`, replaced when the message is opened (Phase 6).
+- First run: an Initial setup page (reached from a banner shown on Admin pages while settings are missing) asks for the clinic name, address and phone and creates the settings with default templates, the branch, the Eye and Homeopathy departments, and visit types Checkup and Follow-up for each plus Eye Test.
 
 ### 7.9 Audit log
 - Filter by user, date, action type. Shows before and after values.

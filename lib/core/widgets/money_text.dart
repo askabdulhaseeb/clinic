@@ -16,9 +16,7 @@ class MoneyText extends StatelessWidget {
     return Text(
       Money.format(amount, symbol: symbol),
       textAlign: TextAlign.right,
-      style: base.copyWith(
-        fontFeatures: const [FontFeature.tabularFigures()],
-      ),
+      style: base.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
     );
   }
 }

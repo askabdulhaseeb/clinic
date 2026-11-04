@@ -29,10 +29,16 @@ void main() {
     });
 
     test('whatsAppLink encodes the message', () {
-      final uri = Phone.whatsAppLink('03001234567', 'Reminder: visit tomorrow & bring reports');
+      final uri = Phone.whatsAppLink(
+        '03001234567',
+        'Reminder: visit tomorrow & bring reports',
+      );
       expect(uri.host, 'wa.me');
       expect(uri.path, '/923001234567');
-      expect(uri.queryParameters['text'], 'Reminder: visit tomorrow & bring reports');
+      expect(
+        uri.queryParameters['text'],
+        'Reminder: visit tomorrow & bring reports',
+      );
       expect(uri.toString(), contains('text=Reminder'));
     });
   });

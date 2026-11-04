@@ -41,7 +41,7 @@ flutter pub get
 flutter analyze
 dart format lib test
 flutter test                       # unit + widget
-flutter test integration_test      # needs the Firebase emulators running
+tool/integration_test_web.sh         # integration tests on headless Chrome + emulators (--no-headless to watch)
 firebase emulators:start           # Firestore, Auth, Functions, Storage (after firebase init)
 cd functions && npm test           # Cloud Functions + rules tests (Jest, emulator)
 ```
@@ -51,11 +51,11 @@ Run `flutter analyze` and `flutter test` before saying a change is done.
 ## Firebase
 
 - Project `ramzan-clinic-web`, Firestore and Functions in `asia-south1`, Storage bucket in `us-central1`, Blaze plan. `lib/firebase_options.dart` is generated; do not hand-edit.
-- The app talks to the live project in development. All tests use the local Emulator Suite, never live data.
+- The app talks to the live project in development. All tests use the local Emulator Suite, never live data. `--dart-define=USE_EMULATORS=true` switches the app to the emulators.
 - Functions: 2nd gen, TypeScript, Node 22, in `functions/`. Build with `npm run build` there; `firebase deploy` runs it as a predeploy step.
 - Deploys (`firebase deploy ...`) are run by the owner, not by AI sessions.
 - App IDs: `ramzan.shop.ramzan`. Launcher name and browser title: Clinic.
 
 ## Current status
 
-Phase 0 (project setup) is done: Firestore, Auth and Blaze enabled, Firebase config files and `functions/` scaffold in place, rules deny everything. Next: Phase 1 (Auth and users). Phase list in DEVELOPMENT_PLAN §6.
+Phase 0 done. Phase 1 (Auth and users) and Phase 2 (Admin master data: settings, first-run setup, departments, doctors, visit types, fee grid, doctor picker in the user form) are built and tested on Chrome as of 3 Nov 2026 (192 Flutter tests, 90 Functions/rules tests, 7 integration flows in two files); both await owner screen review and the first Functions + rules + storage deploy. The live Storage bucket (us-central1) still has to be created by the owner before the logo upload works on the live project. A debug-only "Create test admin" button (admin@mytester.com / 1234567890, `createTestAdmin` callable gated by `ALLOW_TEST_ADMIN` in `functions/.env`) exists for testing; Phase 9 removes it. Next: Phase 3 (Patients and families). Phase list and per-phase status in DEVELOPMENT_PLAN §6.

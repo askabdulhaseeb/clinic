@@ -1,9 +1,177 @@
 rules_version = '2';
 
-// Phase 0: deny everything. Collection rules are added per phase
-// following FIREBASE_ARCHITECTURE.md §6.
+// Firestore security rules. Summary table: docs/FIREBASE_ARCHITECTURE.md §6.
+// Collections are opened per build phase (docs/DEVELOPMENT_PLAN.md §6);
+// anything without an explicit match stays denied by the catch-all below.
+//
+// Phase 1: role helpers + `users`.
+// Phase 2: `branches`, `settings`, `departments`, `visitTypes`, `doctors`.
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ----- helpers -----------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Roles live in Auth custom claims, not in the users document.
+    // Missing claim resolves to an empty list so `in` checks simply fail.
+    function roles() {
+      return isSignedIn() ? request.auth.token.get('roles', []) : [];
+    }
+
+    function hasRole(r) {
+      return isSignedIn() && (r in roles());
+    }
+
+    function isAdmin() {
+      return hasRole('admin');
+    }
+
+    function isReception() {
+      return hasRole('reception');
+    }
+
+    function isDoctor() {
+      return hasRole('doctor');
+    }
+
+    function isOwnDoctor(doctorId) {
+      return isDoctor() && request.auth.token.get('doctorId', null) == doctorId;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function updatedByIsCaller() {
+      return request.resource.data.updatedBy == request.auth.uid;
+    }
+
+    // ----- users/{uid}  (§4.3) -------------------------------------------
+    // Created and role-managed only by Cloud Functions (admin SDK bypasses
+    // rules). Admin may rename; the user may clear mustChangePassword.
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if false;
+      allow update: if
+        (isAdmin()
+          && changedKeys().hasOnly(['displayName', 'updatedAt', 'updatedBy'])
+          && updatedByIsCaller())
+        ||
+        (isOwner(uid)
+          && changedKeys().hasOnly(['mustChangePassword', 'updatedAt', 'updatedBy'])
+          && request.resource.data.mustChangePassword == false
+          && updatedByIsCaller());
+      allow delete: if false;
+    }
+
+    function createdByIsCaller() {
+      return request.resource.data.createdBy == request.auth.uid;
+    }
+
+    function inCallerBranch(branchId) {
+      return branchId in request.auth.token.get('branchIds', ['main']);
+    }
+
+    function isNonEmptyString(v) {
+      return v is string && v.size() > 0;
+    }
+
+    // ----- master data (§4.1, §4.2, §4.4, §4.5, §4.6) ---------------------
+    // Any signed-in user reads (reception caches all of it offline). Only
+    // Admin writes, never deletes; inactive records keep `active: false`.
+    // Audit of fee changes is a Phase 9 trigger.
+    match /branches/{branchId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && createdByIsCaller();
+      allow update: if isAdmin() && updatedByIsCaller();
+      allow delete: if false;
+    }
+
+    match /settings/{settingsId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin()
+        && isNonEmptyString(request.resource.data.clinicName)
+        && updatedByIsCaller();
+      allow update: if isAdmin()
+        && isNonEmptyString(request.resource.data.clinicName)
+        && updatedByIsCaller();
+      allow delete: if false;
+    }
+
+    match /departments/{departmentId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin()
+        && isNonEmptyString(request.resource.data.name)
+        && isNonEmptyString(request.resource.data.code)
+        && request.resource.data.active is bool
+        && createdByIsCaller();
+      allow update: if isAdmin()
+        && isNonEmptyString(request.resource.data.name)
+        && isNonEmptyString(request.resource.data.code)
+        && request.resource.data.active is bool
+        && updatedByIsCaller();
+      allow delete: if false;
+    }
+
+    match /visitTypes/{visitTypeId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin()
+        && isNonEmptyString(request.resource.data.name)
+        && isNonEmptyString(request.resource.data.departmentId)
+        && request.resource.data.isOperation is bool
+        && request.resource.data.isFollowUp is bool
+        && request.resource.data.active is bool
+        && createdByIsCaller();
+      allow update: if isAdmin()
+        && isNonEmptyString(request.resource.data.name)
+        && isNonEmptyString(request.resource.data.departmentId)
+        && request.resource.data.isOperation is bool
+        && request.resource.data.isFollowUp is bool
+        && request.resource.data.active is bool
+        && updatedByIsCaller();
+      allow delete: if false;
+    }
+
+    match /doctors/{doctorId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin()
+        && isNonEmptyString(request.resource.data.name)
+        && isNonEmptyString(request.resource.data.departmentId)
+        && request.resource.data.salary is int
+        && request.resource.data.salary >= 0
+        && request.resource.data.sharePercent is number
+        && request.resource.data.sharePercent >= 0
+        && request.resource.data.sharePercent <= 100
+        && request.resource.data.shareBasis in ['gross', 'net']
+        && request.resource.data.fees is map
+        && request.resource.data.active is bool
+        && inCallerBranch(request.resource.data.branchId)
+        && createdByIsCaller();
+      // `userId` is the login link and belongs to the user-management
+      // functions (createUser / setUserRoles), not to the doctor form.
+      allow update: if isAdmin()
+        && isNonEmptyString(request.resource.data.name)
+        && isNonEmptyString(request.resource.data.departmentId)
+        && request.resource.data.salary is int
+        && request.resource.data.salary >= 0
+        && request.resource.data.sharePercent is number
+        && request.resource.data.sharePercent >= 0
+        && request.resource.data.sharePercent <= 100
+        && request.resource.data.shareBasis in ['gross', 'net']
+        && request.resource.data.fees is map
+        && request.resource.data.active is bool
+        && !changedKeys().hasAny(['userId', 'branchId', 'createdAt', 'createdBy'])
+        && updatedByIsCaller();
+      allow delete: if false;
+    }
+
+    // ----- catch-all: everything not matched above is denied ------------
     match /{document=**} {
       allow read, write: if false;
     }

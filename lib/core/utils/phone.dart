@@ -23,9 +23,6 @@ abstract final class Phone {
   static String international(String stored) => '92${stored.substring(1)}';
 
   /// Pre-filled WhatsApp Web link.
-  static Uri whatsAppLink(String stored, String message) => Uri.https(
-        'wa.me',
-        '/${international(stored)}',
-        {'text': message},
-      );
+  static Uri whatsAppLink(String stored, String message) =>
+      Uri.https('wa.me', '/${international(stored)}', {'text': message});
 }

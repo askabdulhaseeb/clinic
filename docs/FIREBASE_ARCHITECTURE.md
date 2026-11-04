@@ -1,6 +1,6 @@
 # Firebase Architecture
 
-**Status:** Draft v3 — 31 Oct 2026. v3: budget decisions — summaries kept by increments (no recompute), no backup, Storage bucket in us-central1, no prescription photos, cost table for 500 visits a day.
+**Status:** Draft v4 — 3 Nov 2026. v4: Phase 2 — `branches`, `settings`, `departments`, `visitTypes`, `doctors` rules; doctor–login link kept by `createUser` / `setUserRoles`; logo in Storage; first-run setup from the app. v3: budget decisions — summaries kept by increments (no recompute), no backup, Storage bucket in us-central1, no prescription photos, cost table for 500 visits a day.
 **Companion to:** [FEATURES.md](FEATURES.md). Feature behaviour is defined there; this document defines how it is stored and secured.
 
 ---
@@ -26,6 +26,8 @@
 | Timezone | Asia/Karachi for day boundaries. |
 | Backup | None in v1 (owner decision 31 Oct 2026, cost). Firestore replicates data across zones; the risk accepted is accidental bulk deletion or corruption by the app, which soft deletes and Admin-only edits mitigate. Point-in-time recovery or a monthly export can be enabled later without code changes. |
 | Reminders | No reminders collection. The "due today" list is a query over appointments. Sent state is stored on the appointment. |
+| Doctor ↔ login link | Decided 3 Nov 2026. `users.doctorId` and `doctors.userId` are both written by the user-management functions in one transaction; the doctor form and rules never touch `doctors.userId`. One login per doctor. |
+| WhatsApp placeholders | `{patient}`, `{doctor}`, `{date}`, `{time}`, `{clinic}` in `settings.whatsappTemplates`. |
 
 ---
 
@@ -59,8 +61,9 @@
 
 ### 4.1 `branches/{branchId}`
 ```
-name, address, phone, active, createdAt
+name, address, phone, active, createdAt, createdBy, updatedAt, updatedBy
 ```
+`branches/main` is created by the first-run setup with the clinic name, address and phone.
 
 ### 4.2 `settings/general`  (single document)
 ```
@@ -72,6 +75,7 @@ whatsappTemplates: { appointment: "...", followUp: "...", postOp: "...", adhoc: 
 timezone: "Asia/Karachi",
 updatedAt, updatedBy
 ```
+Created by the first-run setup (§10) with default templates; `logoUrl` is set by the logo upload (§7). `followUpReminderDays` is 0 to 30, `defaultReceiptCopies` 1 to 5. Templates use the placeholders in §1. The app keeps one listener on this document per signed-in session for the header name and the first-run banner.
 
 ### 4.3 `users/{uid}`
 ID is the Auth UID.
@@ -84,27 +88,27 @@ Roles are also written to Auth custom claims `{ roles: [...], doctorId, branchId
 
 ### 4.4 `departments/{departmentId}`
 ```
-name: "Eye", code: "E", sortOrder, active, createdAt
+name: "Eye", code: "E", sortOrder, active, createdAt, createdBy, updatedAt, updatedBy
 ```
-Seeded with Eye (`E`) and Homeopathy (`H`). `code` must be unique; it prefixes tokens.
+Seeded with Eye (`eye`, `E`) and Homeopathy (`homeo`, `H`) by the first-run setup, fixed IDs. `code` is 1 to 3 letters, unique (checked by the Admin form), and prefixes tokens. Changing a code rewrites `departmentCode` on the department's doctors in the same batch (decided 3 Nov 2026).
 
 ### 4.5 `doctors/{doctorId}`
 ```
 userId, name, departmentId, departmentCode, specialisation,
 salary (monthly PKR), sharePercent, shareBasis: "gross" | "net",
 fees: { [visitTypeId]: amount },        // fee schedule embedded
-active, branchId, createdAt, updatedAt
+active, branchId, createdAt, createdBy, updatedAt, updatedBy
 ```
-Fee schedule is a map on the doctor so reception loads one document per doctor. Fee changes are audited by the `auditDoctors` trigger.
+Fee schedule is a map on the doctor so reception loads one document per doctor. `sharePercent` is a number 0 to 100 (decimals allowed). `userId` is the login link, written only by `createUser` / `setUserRoles` (§5); the fee grid rewrites the whole `fees` map of one doctor per save. Fee changes are audited by the `auditDoctors` trigger (Phase 9).
 
 ### 4.6 `visitTypes/{visitTypeId}`
 ```
 departmentId, name, isOperation, isFollowUp, sortOrder, active,
 defaultPreOpChecklist: [ { id, label } ],     // operation types only
 defaultPostOpDays: [1, 7, 30],                 // operation types only
-createdAt, updatedAt
+createdAt, createdBy, updatedAt, updatedBy
 ```
-Each department is seeded with Checkup and Follow-up (`isFollowUp: true`). Eye also gets Eye Test. Operation types are added by Admin.
+Each department is seeded with Checkup and Follow-up (`isFollowUp: true`), fixed IDs `eye-checkup`, `eye-follow-up`, `homeo-checkup`, `homeo-follow-up`. Eye also gets Eye Test (`eye-eye-test`). Operation types are added by Admin; `isOperation` and `isFollowUp` are exclusive. Checklist item IDs are client UUIDs; post-op days are 1 to 365, kept sorted.
 
 ### 4.7 `families/{familyId}`
 ```
@@ -295,15 +299,17 @@ Audited collections: `visits`, `sales`, `expenses`, `doctors`, `visitTypes`, `in
 
 | Function | Trigger | Does |
 |---|---|---|
-| `createUser` | callable, Admin only | Creates Auth user with temporary password, writes `users/{uid}`, sets custom claims. |
-| `setUserRoles` | callable, Admin only | Updates roles on the user doc and custom claims. Deactivation disables the Auth account. |
+| `createUser` | callable, Admin only | Input `{ email, displayName, roles, doctorId?, temporaryPassword }` (min 8 chars; `doctorId` required when roles include doctor). With a `doctorId`, first checks `doctors/{doctorId}` exists (`not-found`) and is not linked to another login (`already-exists`). Creates the Auth user, sets claims `{ roles, doctorId, branchIds: ["main"] }`, writes `users/{uid}` with `mustChangePassword: true`, then sets `doctors/{doctorId}.userId = uid` in a transaction. Email is trimmed and lower-cased. Duplicate email → `already-exists`. If any later step fails the Auth user and doc are deleted again. Returns `{ uid }`. |
+| `setUserRoles` | callable, Admin only | Input `{ uid, roles?, doctorId?, displayName?, active? }`. Before touching the account, syncs the doctor link in one transaction: the new doctor (if any) must exist and be unlinked or linked to this uid, gets `userId = uid`; the previous doctor of this uid gets `userId = null`. Then updates custom claims and the user doc (`branchIds` kept, `updatedAt/By` written), also writes `displayName` to the Auth profile. `active: false` disables the Auth account and revokes refresh tokens; `active: true` re-enables. Rejects an admin removing their own admin role or deactivating themselves (`failed-precondition`). Granting `doctor` requires a `doctorId`. |
+| `createTestAdmin` | callable, **anyone**, only while `ALLOW_TEST_ADMIN=true` in `functions/.env` | Development helper (decided 2 Nov 2026). Creates or restores the fixed account `admin@mytester.com` / `1234567890`: Auth user enabled with that password, claims `{ roles: ["admin"], doctorId: null, branchIds: ["main"] }`, `users/{uid}` with `active: true`, `mustChangePassword: false`, `createdBy: "createTestAdmin"`; refresh tokens revoked so old sessions pick up the claims. Returns `{ uid, created }`. With the switch off it throws `failed-precondition`. Phase 9 sets the switch to false, redeploys and deletes the account. |
+| `resetUserPassword` | callable, Admin only | Input `{ uid, temporaryPassword }` (min 8 chars). Sets the Auth password, sets `mustChangePassword: true`, revokes refresh tokens so the user must sign in again with the temporary password. |
 | `assignPatientNo` | `patients` onCreate | Transaction on `counters/patients_{YY}`, writes `patientNo`. |
 | `applyDailySummaryDelta` | `visits`, `sales`, `expenses` onWrite | Computes before/after contribution and increments `dailySummaries/{date}` (see §4.22 delta rule). Zero reads. Skips duplicate events through `summaryEvents`. |
 | `recomputeDay` | callable, Admin only | Repair tool: reads every visit, sale and expense of one `date` (a few hundred reads) and rewrites that summary from scratch. Used only when a total looks wrong. |
 | `audit*` | onWrite on audited collections | Writes `auditLogs` with before, after, and changed fields. |
 | `checkDuplicateFamilyPhone` | `families` onCreate | If another family has the same phone, flags both with `duplicatePhone: true` for Admin to merge. |
 
-Functions never write to collections that clients also write, except `patientNo`, `isFirstVisit` validation and the duplicate flag. This keeps offline writes free of conflicts.
+Functions never write to collections that clients also write, except `patientNo`, `isFirstVisit` validation, the duplicate flag and `doctors.userId` (Admin-only, online-only data, so no offline conflict). This keeps offline writes free of conflicts.
 
 ---
 
@@ -313,8 +319,8 @@ Roles come from `request.auth.token.roles`. Helper functions: `isAdmin()`, `isRe
 
 | Collection | Read | Create | Update | Delete |
 |---|---|---|---|---|
-| `settings`, `departments`, `visitTypes`, `doctors` | any signed-in | Admin | Admin | never |
-| `users` | own doc, or Admin | Functions only | Admin (non-role fields), Functions (roles) | never |
+| `branches`, `settings`, `departments`, `visitTypes`, `doctors` | any signed-in | Admin (`createdBy` = caller; `settings`: `updatedBy`) | Admin (`updatedBy` = caller). `doctors`: `userId`, `branchId`, `createdAt`, `createdBy` cannot change. Shape checks: non-empty names and codes, `salary` int ≥ 0, `sharePercent` 0–100, `shareBasis` in gross/net, `fees` map, boolean flags | never |
+| `users` | own doc, or Admin | Functions only | Admin: only `displayName` (+ `updatedAt`, `updatedBy`). Owner: only `mustChangePassword` → `false` (+ `updatedAt`, `updatedBy`). Roles, `active`, `doctorId`: Functions only | never |
 | `families`, `patients` | any signed-in | Reception, Admin | Reception, Admin | never (soft) |
 | `appointments` | any signed-in | Reception, Doctor, Admin | Reception, Doctor, Admin | never |
 | `visits` | any signed-in | Reception, Admin | Admin any field; Doctor only `status`, `startedAt`, `completedAt`, `hasPrescription` on own visits | never (soft) |
@@ -329,6 +335,8 @@ Roles come from `request.auth.token.roles`. Helper functions: `isAdmin()`, `isRe
 | `dailySummaries`, `auditLogs`, `counters`, `summaryEvents` | Admin (`counters`, `summaryEvents`: nobody) | Functions | Functions | never |
 
 Additional rule checks:
+- Roles come from the ID token. After `setUserRoles` the client calls `getIdToken(true)`; the app does this automatically when the roles on the user document change.
+- Callable error codes the app maps to messages: `unauthenticated`, `permission-denied`, `invalid-argument` (message names the field), `already-exists`, `not-found`, `failed-precondition`, `internal`.
 - `branchId` must be in `request.auth.token.branchIds`.
 - `createdBy` and `updatedBy` must equal `request.auth.uid`.
 - `visits.discountAmount > 0` requires non-empty `discountReason`.
@@ -346,7 +354,7 @@ Bucket: the default bucket, created in `us-central1`.
 clinic/logo.png
 patients/{patientId}/reports/{reportId}.{pdf|jpg|png}
 ```
-Rules: any signed-in user reads. Reception and Admin write under `reports`; Admin writes `clinic/logo.png`. Max 10 MB per file. Report images are resized on the client to a maximum of 1200 px and JPEG quality 80 (roughly 150 KB) before upload so the 5 GB no-cost quota lasts years.
+Rules: any signed-in user reads. Reception and Admin write under `reports` (Phase 5); Admin writes `clinic/logo.png` (any `image/*` content type, max 2 MB, replaced in place; the download URL is stored in `settings.logoUrl`). Max 10 MB per report file. Report images are resized on the client to a maximum of 1200 px and JPEG quality 80 (roughly 150 KB) before upload so the 5 GB no-cost quota lasts years. The app points `firebase_storage` at the Storage emulator (port 9199) under `USE_EMULATORS=true`.
 
 ---
 
@@ -388,7 +396,7 @@ Firestore will also prompt for any missing index on first use; the list above is
 
 ## 10. Seed Data
 
-On first deploy an Admin-only "Initial setup" screen creates: `branches/main`, `settings/general`, departments Eye and Homeopathy, visit types Checkup and Follow-up for each plus Eye Test, and the first Admin user is created with the Firebase console.
+The first Admin user is created with the Firebase console (or the dev test-admin button). While `settings/general` is missing, every Admin page shows a banner leading to `/admin/setup` (decided 3 Nov 2026: banner, not a forced redirect). The Initial setup screen asks for the clinic name, address and phone and writes in one batch: `branches/main`, `settings/general` (defaults from §4.2), departments Eye and Homeopathy, visit types Checkup and Follow-up for each plus Eye Test (fixed IDs, §4.4 and §4.6, merged so a re-run never duplicates). The emulator seed (`functions/scripts/seed-emulator.js`) writes the same catalog IDs plus one doctor, and deliberately leaves `settings/general` missing so the integration test covers the setup screen.
 
 ---
 

@@ -1,33 +1,210 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
+import '../../features/auth/domain/entities/user_role.dart';
+import '../../features/auth/presentation/screens/change_password_screen.dart';
+import '../../features/auth/presentation/screens/login_screen.dart';
+import '../../features/auth/presentation/viewmodels/session_controller.dart';
+import '../../features/catalog/presentation/screens/catalog_screen.dart';
+import '../../features/catalog/presentation/screens/doctor_form_screen.dart';
+import '../../features/catalog/presentation/screens/visit_type_form_screen.dart';
+import '../../features/settings/presentation/screens/initial_setup_screen.dart';
+import '../../features/settings/presentation/screens/settings_screen.dart';
+import '../../features/settings/presentation/viewmodels/settings_controller.dart';
+import '../../features/users/presentation/screens/users_screen.dart';
 import 'app_routes.dart';
 import 'placeholder_screen.dart';
+import 'shells/app_shell.dart';
+import 'shells/shell_destination.dart';
 
-/// Builds the app router. Auth-aware redirects are added in Phase 1.
-GoRouter buildRouter({String initialLocation = AppRoutes.login}) {
+/// Builds the app router. [session] drives the auth redirects:
+/// unknown → splash, signed out → login, mustChangePassword → change
+/// password, otherwise the active role's home.
+GoRouter buildRouter({
+  required SessionController session,
+  String initialLocation = AppRoutes.splash,
+}) {
   return GoRouter(
     initialLocation: initialLocation,
+    refreshListenable: session,
+    redirect: (context, state) => redirectFor(session, state.uri.toString()),
     routes: [
-      GoRoute(
-        path: AppRoutes.login,
-        builder: (_, _) => const PlaceholderScreen(title: 'Login'),
-      ),
+      GoRoute(path: AppRoutes.splash, builder: (_, _) => const _SplashScreen()),
+      GoRoute(path: AppRoutes.login, builder: (_, _) => const LoginScreen()),
       GoRoute(
         path: AppRoutes.changePassword,
-        builder: (_, _) => const PlaceholderScreen(title: 'Change password'),
+        builder: (_, state) => ChangePasswordScreen(
+          forced: state.uri.queryParameters.containsKey('forced'),
+        ),
       ),
-      GoRoute(
-        path: AppRoutes.reception,
-        builder: (_, _) => const PlaceholderScreen(title: 'Reception'),
-      ),
-      GoRoute(
-        path: AppRoutes.doctor,
-        builder: (_, _) => const PlaceholderScreen(title: 'Doctor'),
-      ),
-      GoRoute(
-        path: AppRoutes.admin,
-        builder: (_, _) => const PlaceholderScreen(title: 'Admin'),
-      ),
+      for (final role in UserRole.values) _roleShell(role),
     ],
   );
+}
+
+/// Pure redirect logic, unit-tested without widgets.
+///
+/// [location] is the full location (path plus query). A signed-out or
+/// not-yet-known session that hits a role page is parked on `/` or `/login`
+/// with the wanted page in a `from` query parameter, and returns there once
+/// signed in (UI_DESIGN §3.1).
+String? redirectFor(SessionController session, String location) {
+  final uri = Uri.parse(location);
+  final path = uri.path;
+  final isPublic = path == AppRoutes.login || path == AppRoutes.splash;
+  final from = isPublic
+      ? _safeReturnPath(uri.queryParameters['from'])
+      : _safeReturnPath(location);
+
+  switch (session.status) {
+    case SessionStatus.unknown:
+    case SessionStatus.loading:
+      return path == AppRoutes.splash
+          ? null
+          : _withFrom(AppRoutes.splash, from);
+    case SessionStatus.signedOut:
+      return path == AppRoutes.login ? null : _withFrom(AppRoutes.login, from);
+    case SessionStatus.signedIn:
+      final user = session.user;
+      if (user == null) {
+        // Auth OK but no user document or deactivated: stay on login where
+        // the session error is shown.
+        return path == AppRoutes.login ? null : AppRoutes.login;
+      }
+      final forced =
+          path == AppRoutes.changePassword &&
+          uri.queryParameters.containsKey('forced');
+      if (user.mustChangePassword) {
+        return forced ? null : AppRoutes.forcedChangePassword;
+      }
+      final active = session.activeRole ?? user.sortedRoles.firstOrNull;
+      if (active == null) {
+        return path == AppRoutes.login ? null : AppRoutes.login;
+      }
+      if (forced) {
+        // Password changed: leave the forced screen for the role home.
+        return AppRoutes.homeFor(active);
+      }
+      if (isPublic) {
+        final wantedRole = from == null
+            ? null
+            : AppRoutes.roleOf(Uri.parse(from).path);
+        if (wantedRole != null && user.hasRole(wantedRole)) return from;
+        return AppRoutes.homeFor(active);
+      }
+      final wanted = AppRoutes.roleOf(path);
+      if (wanted == null) return null; // e.g. /change-password by choice
+      if (!user.hasRole(wanted)) return AppRoutes.homeFor(active);
+      if (path == AppRoutes.rootFor(wanted)) {
+        return AppRoutes.homeFor(wanted);
+      }
+      return null;
+  }
+}
+
+/// Only in-app role pages may be remembered: never public pages, never
+/// absolute URLs from the address bar.
+String? _safeReturnPath(String? raw) {
+  if (raw == null || !raw.startsWith('/')) return null;
+  final uri = Uri.tryParse(raw);
+  if (uri == null || uri.hasScheme || uri.hasAuthority) return null;
+  return AppRoutes.roleOf(uri.path) == null ? null : raw;
+}
+
+String _withFrom(String base, String? from) => from == null
+    ? base
+    : Uri(path: base, queryParameters: {'from': from}).toString();
+
+ShellRoute _roleShell(UserRole role) {
+  final destinations = ShellDestinations.forRole(role);
+  return ShellRoute(
+    builder: (context, state, child) => AppShell(role: role, child: child),
+    routes: [
+      GoRoute(
+        path: AppRoutes.rootFor(role),
+        builder: (_, _) => const SizedBox.shrink(), // always redirected
+      ),
+      for (final d in destinations)
+        if (d.path == AppRoutes.adminCatalog)
+          GoRoute(
+            path: d.path,
+            redirect: (_, _) => AppRoutes.adminCatalogDepartments,
+          )
+        else
+          GoRoute(path: d.path, builder: (_, _) => _screenFor(d.path, d.label)),
+      if (role == UserRole.admin) ..._adminRoutes(),
+    ],
+  );
+}
+
+/// Admin pages below the sidebar destinations (Phase 2: catalog, setup).
+List<GoRoute> _adminRoutes() => [
+  GoRoute(
+    path: AppRoutes.adminCatalogDepartments,
+    builder: (_, _) => const CatalogScreen(tab: CatalogTab.departments),
+  ),
+  GoRoute(
+    path: AppRoutes.adminCatalogDoctors,
+    builder: (_, _) => const CatalogScreen(tab: CatalogTab.doctors),
+  ),
+  GoRoute(
+    path: AppRoutes.adminCatalogDoctorNew,
+    builder: (_, _) => const DoctorFormScreen(),
+  ),
+  GoRoute(
+    path: AppRoutes.adminCatalogDoctorPattern,
+    builder: (_, state) =>
+        DoctorFormScreen(doctorId: state.pathParameters['id']),
+  ),
+  GoRoute(
+    path: AppRoutes.adminCatalogVisitTypes,
+    builder: (_, _) => const CatalogScreen(tab: CatalogTab.visitTypes),
+  ),
+  GoRoute(
+    path: AppRoutes.adminCatalogVisitTypeNew,
+    builder: (_, state) => VisitTypeFormScreen(
+      initialDepartmentId: state.uri.queryParameters['departmentId'],
+    ),
+  ),
+  GoRoute(
+    path: AppRoutes.adminCatalogVisitTypePattern,
+    builder: (_, state) =>
+        VisitTypeFormScreen(visitTypeId: state.pathParameters['id']),
+  ),
+  GoRoute(
+    path: AppRoutes.adminCatalogFees,
+    builder: (_, _) => const CatalogScreen(tab: CatalogTab.fees),
+  ),
+  GoRoute(
+    path: AppRoutes.adminSetup,
+    // Only while the clinic is not set up (UI_DESIGN §3.4).
+    redirect: (context, _) {
+      final settings = context.read<SettingsController?>();
+      return settings?.status == SettingsStatus.ready
+          ? AppRoutes.adminDashboard
+          : null;
+    },
+    builder: (_, _) => const InitialSetupScreen(),
+  ),
+];
+
+Widget _screenFor(String path, String label) {
+  switch (path) {
+    case AppRoutes.adminUsers:
+      return const UsersScreen();
+    case AppRoutes.adminSettings:
+      return const SettingsScreen();
+    default:
+      return PlaceholderScreen(title: label, embedded: true);
+  }
+}
+
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+  }
 }

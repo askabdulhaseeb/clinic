@@ -1,9 +1,27 @@
 rules_version = '2';
 
-// Phase 0: deny everything. Paths from FIREBASE_ARCHITECTURE.md §7 are
-// opened per phase (reports in Phase 5, prescriptions in Phase 5, logo in Phase 2).
+// Storage layout: FIREBASE_ARCHITECTURE.md §7. Paths are opened per phase:
+// Phase 2 the clinic logo, Phase 5 patient reports. Everything else denied.
 service firebase.storage {
   match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && ('admin' in request.auth.token.get('roles', []));
+    }
+
+    // Clinic logo shown on receipts and in the app header. One fixed file,
+    // replaced in place by Admin. Images only, 2 MB cap.
+    match /clinic/logo.png {
+      allow read: if isSignedIn();
+      allow write: if isAdmin()
+        && request.resource != null
+        && request.resource.contentType.matches('image/.*')
+        && request.resource.size <= 2 * 1024 * 1024;
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }
