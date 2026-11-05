@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../features/appointments/presentation/screens/appointments_screen.dart';
+import '../../features/appointments/presentation/screens/book_appointment_screen.dart';
 import '../../features/auth/domain/entities/user_role.dart';
 import '../../features/auth/presentation/screens/change_password_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
@@ -151,6 +153,7 @@ ShellRoute _roleShell(UserRole role) {
       if (role == UserRole.admin || role == UserRole.reception) ...[
         ..._patientRoutes(role),
         ..._visitRoutes(role),
+        ..._appointmentRoutes(role),
       ],
       if (role == UserRole.doctor) ..._doctorRoutes(),
     ],
@@ -195,6 +198,8 @@ List<GoRoute> _visitRoutes(UserRole role) {
       builder: (_, state) => NewVisitScreen(
         role: role,
         patientId: state.uri.queryParameters['patientId'] ?? '',
+        appointmentId: state.uri.queryParameters['appointmentId'],
+        doctorId: state.uri.queryParameters['doctorId'],
       ),
     ),
     GoRoute(
@@ -204,6 +209,18 @@ List<GoRoute> _visitRoutes(UserRole role) {
     ),
   ];
 }
+
+/// Booking form under `/<role>/appointments` (Phase 6A), shared by
+/// Reception and Admin; the day view itself is a sidebar destination.
+List<GoRoute> _appointmentRoutes(UserRole role) => [
+  GoRoute(
+    path: '${AppRoutes.appointmentsFor(role)}/new',
+    builder: (_, state) => BookAppointmentScreen(
+      role: role,
+      patientId: state.uri.queryParameters['patientId'] ?? '',
+    ),
+  ),
+];
 
 /// Doctor pages below the tabs (Phase 5A): consultation and patient history.
 List<GoRoute> _doctorRoutes() => [
@@ -291,6 +308,10 @@ Widget _screenFor(String path, String label) {
       return const QueueScreen(role: UserRole.reception);
     case AppRoutes.receptionSummary:
       return const SummaryScreen();
+    case AppRoutes.receptionAppointments:
+      return const AppointmentsScreen(role: UserRole.reception);
+    case AppRoutes.adminAppointments:
+      return const AppointmentsScreen(role: UserRole.admin);
     case AppRoutes.doctorQueue:
       return const DoctorQueueScreen();
     case AppRoutes.doctorPatients:

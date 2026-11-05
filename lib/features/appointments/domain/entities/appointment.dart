@@ -1,13 +1,14 @@
 /// Where an appointment came from (FIREBASE_ARCHITECTURE §4.10).
 enum AppointmentSource {
-  manual('manual'),
-  followUp('followUp'),
-  postOp('postOp'),
-  operation('operation');
+  manual('manual', 'Manual'),
+  followUp('followUp', 'Follow-up'),
+  postOp('postOp', 'Post-op'),
+  operation('operation', 'Operation');
 
-  const AppointmentSource(this.key);
+  const AppointmentSource(this.key, this.label);
 
   final String key;
+  final String label;
 
   static AppointmentSource parse(Object? raw) => values.firstWhere(
     (s) => s.key == raw,

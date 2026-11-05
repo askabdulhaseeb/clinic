@@ -169,6 +169,7 @@ class VisitsRepositoryImpl implements VisitsRepository {
       status: VisitStatus.waiting,
       receiptCopies: input.receiptCopies,
       operationId: input.operationId,
+      appointmentId: input.appointmentId,
       createdBy: uid,
       createdAt: now,
       branchId: input.patient.branchId,
@@ -190,6 +191,16 @@ class VisitsRepositoryImpl implements VisitsRepository {
       'updatedAt': FieldValue.serverTimestamp(),
       'updatedBy': uid,
     });
+    // Arrived from the appointments screen (Phase 6A): the appointment is
+    // marked arrived with this visit in the same batch.
+    if (input.appointmentId case final appointmentId?) {
+      batch.update(_db.doc('appointments/$appointmentId'), {
+        'status': 'arrived',
+        'visitId': ref.id,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedBy': uid,
+      });
+    }
     // Offline the commit is only acknowledged on reconnect; do not wait.
     await commitOrQueue(batch.commit());
     return visit;

@@ -36,6 +36,7 @@ abstract final class VisitModel {
     completedAt: _date(map['completedAt']),
     hasPrescription: (map['hasPrescription'] as bool?) ?? false,
     operationId: map['operationId'] as String?,
+    appointmentId: map['appointmentId'] as String?,
     deleted: (map['deleted'] as bool?) ?? false,
     branchId: (map['branchId'] as String?) ?? 'main',
   );
@@ -70,7 +71,7 @@ abstract final class VisitModel {
     'completedAt': v.completedAt == null
         ? null
         : Timestamp.fromDate(v.completedAt!),
-    'appointmentId': null,
+    'appointmentId': v.appointmentId,
     'operationId': v.operationId,
     'saleId': null,
     'hasPrescription': v.hasPrescription,

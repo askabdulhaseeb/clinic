@@ -48,6 +48,8 @@ void main() {
   NewVisitViewModel make({
     List<Doctor> doctors = const [doctorSara, doctorImran, doctorNoFees],
     int defaultCopies = 1,
+    String? initialDoctorId,
+    String? appointmentId,
   }) => NewVisitViewModel(
     patientsRepository: patients,
     visitsRepository: visits,
@@ -55,7 +57,46 @@ void main() {
     patientId: patientAli.id,
     defaultCopies: defaultCopies,
     waitingCount: (id) => id == doctorSara.id ? 4 : 0,
+    initialDoctorId: initialDoctorId,
+    appointmentId: appointmentId,
   );
+
+  group('from an appointment (Phase 6A)', () {
+    test('preselects the appointment doctor over the last doctor', () async {
+      final vm = make(initialDoctorId: 'doctor-imran', appointmentId: 'apt-1');
+      patientStream.add(patientAli.copyWith(lastDoctorId: 'doctor-sara'));
+      await pumpEventQueue();
+      expect(vm.departmentId, 'homeo');
+      expect(vm.doctorId, 'doctor-imran');
+      expect(vm.appointmentId, 'apt-1');
+    });
+
+    test('save passes the appointment id to the repository', () async {
+      when(() => visits.createVisit(any()))
+          .thenAnswer((inv) async => sampleVisit(id: 'v-new'));
+      final vm = make(initialDoctorId: 'doctor-sara', appointmentId: 'apt-1');
+      patientStream.add(patientAli);
+      await pumpEventQueue();
+      vm.selectVisitType('eye-checkup');
+      await vm.save();
+      final input =
+          verify(() => visits.createVisit(captureAny())).captured.single
+              as VisitInput;
+      expect(input.appointmentId, 'apt-1');
+      expect(input.doctor.id, 'doctor-sara');
+    });
+
+    test(
+      'an unknown or inactive appointment doctor leaves the form blank',
+      () async {
+        final vm = make(initialDoctorId: 'doctor-gone', appointmentId: 'apt-1');
+        patientStream.add(patientAli);
+        await pumpEventQueue();
+        expect(vm.departmentId, isNull);
+        expect(vm.doctorId, isNull);
+      },
+    );
+  });
 
   test(
     'loads the patient and the catalog; nothing selected for a new patient',

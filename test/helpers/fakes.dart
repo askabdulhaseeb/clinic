@@ -10,6 +10,8 @@ import 'package:ramzan/core/read_source.dart';
 import 'package:ramzan/core/storage/image_shrinker.dart';
 import 'package:ramzan/core/storage/key_value_store.dart';
 import 'package:ramzan/core/theme/app_theme.dart';
+import 'package:ramzan/features/appointments/domain/entities/appointment.dart';
+import 'package:ramzan/features/appointments/domain/repositories/appointments_repository.dart';
 import 'package:ramzan/features/auth/domain/entities/app_user.dart';
 import 'package:ramzan/features/auth/domain/entities/user_role.dart';
 import 'package:ramzan/features/auth/domain/repositories/auth_repository.dart';
@@ -176,6 +178,58 @@ void registerOperationFallbacks() {
     ),
   );
 }
+
+class MockAppointmentsRepository extends Mock
+    implements AppointmentsRepository {}
+
+/// Call once (setUpAll) before using `any()` with appointment inputs.
+void registerAppointmentFallbacks() {
+  registerFallbackValue(
+    const BookAppointmentInput(
+      patient: patientAli,
+      doctor: doctorSara,
+      date: '2026-11-06',
+      time: '',
+      notes: '',
+    ),
+  );
+  registerFallbackValue(sampleAppointment());
+}
+
+/// An appointment builder for day-view, tab and rules tests.
+Appointment sampleAppointment({
+  String id = 'apt-1',
+  Patient patient = patientAli,
+  Doctor doctor = doctorSara,
+  String date = '2026-11-05',
+  String time = '',
+  AppointmentSource source = AppointmentSource.manual,
+  AppointmentStatus status = AppointmentStatus.booked,
+  String? operationId,
+  String? prescriptionId,
+  String? visitId,
+  String notes = '',
+  DateTime? createdAt,
+}) => Appointment(
+  id: id,
+  patientId: patient.id,
+  patientName: patient.name,
+  patientNo: patient.displayNo,
+  phone: patient.personalPhone ?? patient.phones.first,
+  doctorId: doctor.id,
+  doctorName: doctor.name,
+  departmentId: doctor.departmentId,
+  date: date,
+  time: time,
+  source: source,
+  status: status,
+  operationId: operationId,
+  prescriptionId: prescriptionId,
+  visitId: visitId,
+  notes: notes,
+  createdBy: 'rec-1',
+  createdAt: createdAt ?? DateTime.utc(2026, 11, 4, 6),
+);
 
 Operation sampleOperation({
   String id = 'op-1',
@@ -631,6 +685,7 @@ Widget wrapWithProviders({
   PrescriptionsRepository? prescriptionsRepository,
   ReportsRepository? reportsRepository,
   OperationsRepository? operationsRepository,
+  AppointmentsRepository? appointmentsRepository,
   DevToolsRepository? devTools,
   Size size = const Size(1280, 800),
 }) {
@@ -657,6 +712,8 @@ Widget wrapWithProviders({
         Provider<ReportsRepository>.value(value: reportsRepository),
       if (operationsRepository != null)
         Provider<OperationsRepository>.value(value: operationsRepository),
+      if (appointmentsRepository != null)
+        Provider<AppointmentsRepository>.value(value: appointmentsRepository),
       if (devTools != null) Provider<DevToolsRepository>.value(value: devTools),
     ],
     child: MediaQuery(

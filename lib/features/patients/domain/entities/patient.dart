@@ -112,6 +112,7 @@ class Patient {
     String? address,
     String? notes,
     int? visitCount,
+    String? lastDoctorId,
     bool? deleted,
   }) => Patient(
     id: id,
@@ -132,7 +133,7 @@ class Patient {
     notes: notes ?? this.notes,
     visitCount: visitCount ?? this.visitCount,
     lastVisitAt: lastVisitAt,
-    lastDoctorId: lastDoctorId,
+    lastDoctorId: lastDoctorId ?? this.lastDoctorId,
     deleted: deleted ?? this.deleted,
     branchId: branchId,
     createdAt: createdAt,

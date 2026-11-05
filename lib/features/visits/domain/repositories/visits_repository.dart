@@ -18,6 +18,7 @@ class VisitInput {
     required this.paymentRef,
     required this.receiptCopies,
     this.operationId,
+    this.appointmentId,
   });
 
   final Patient patient;
@@ -32,6 +33,10 @@ class VisitInput {
 
   /// Scheduled operation this token is for (decided 5 Nov 2026).
   final String? operationId;
+
+  /// The appointment whose Arrived button opened the form (Phase 6A); the
+  /// batch marks it arrived with the new visit's id.
+  final String? appointmentId;
 }
 
 /// One day's visits plus the sync state of that listener, which drives the

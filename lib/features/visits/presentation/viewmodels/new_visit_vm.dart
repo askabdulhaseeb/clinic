@@ -33,6 +33,8 @@ class NewVisitViewModel extends ChangeNotifier with CatalogData {
     OperationsRepository? operationsRepository,
     int Function(String doctorId)? waitingCount,
     DateTime Function()? clock,
+    this.initialDoctorId,
+    this.appointmentId,
   }) : _patients = patientsRepository,
        _visits = visitsRepository,
        _waitingCount = waitingCount ?? ((_) => 0),
@@ -61,6 +63,11 @@ class NewVisitViewModel extends ChangeNotifier with CatalogData {
   final int Function(String doctorId) _waitingCount;
   final DateTime Function() _clock;
   final String patientId;
+
+  /// Opened from an appointment's Arrived button (Phase 6A): its doctor is
+  /// preselected and the saved visit marks the appointment arrived.
+  final String? initialDoctorId;
+  final String? appointmentId;
 
   StreamSubscription<Patient?>? _patientSub;
   StreamSubscription<List<Operation>>? _operationsSub;
@@ -286,6 +293,7 @@ class NewVisitViewModel extends ChangeNotifier with CatalogData {
           paymentRef: _paymentRef.trim(),
           receiptCopies: _copies,
           operationId: linkedOperation?.id,
+          appointmentId: appointmentId,
         ),
       );
       _saved = visit;
@@ -323,10 +331,11 @@ class NewVisitViewModel extends ChangeNotifier with CatalogData {
   @override
   void onCatalogChanged() => _preselectFromHistory();
 
-  /// A returning patient starts on their last doctor (UI_DESIGN §4.3).
+  /// A returning patient starts on their last doctor (UI_DESIGN §4.3); an
+  /// appointment's doctor wins when the form was opened from Arrived.
   void _preselectFromHistory() {
     if (_preselected || _departmentId != null) return;
-    final last = _patient?.lastDoctorId;
+    final last = initialDoctorId ?? _patient?.lastDoctorId;
     if (last == null || doctors.isEmpty) return;
     for (final d in doctors) {
       if (d.id == last && d.active) {

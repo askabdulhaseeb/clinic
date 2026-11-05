@@ -38,7 +38,9 @@ void main() {
     int discount = 0,
     String reason = '',
     PaymentMethod method = PaymentMethod.cash,
+    String? appointmentId,
   }) => VisitInput(
+    appointmentId: appointmentId,
     patient: patientAli,
     doctor: doctorSara,
     visitType: eyeCheckup,
@@ -231,6 +233,36 @@ void main() {
     raw = (await db.doc('visits/${v.id}').get()).data()!;
     expect(raw['status'], 'completed');
     expect(raw['completedAt'], isA<Timestamp>());
+  });
+
+  test(
+    'createVisit from an appointment marks it arrived in the same batch',
+    () async {
+      await db.doc('appointments/apt-1').set({
+        'patientId': patientAli.id,
+        'doctorId': doctorSara.id,
+        'date': today,
+        'status': 'booked',
+        'visitId': null,
+      });
+
+      final visit = await repo.createVisit(input(appointmentId: 'apt-1'));
+
+      expect(visit.appointmentId, 'apt-1');
+      final raw = (await db.doc('visits/${visit.id}').get()).data()!;
+      expect(raw['appointmentId'], 'apt-1');
+      final apt = (await db.doc('appointments/apt-1').get()).data()!;
+      expect(apt['status'], 'arrived');
+      expect(apt['visitId'], visit.id);
+      expect(apt['updatedBy'], 'rec-1');
+    },
+  );
+
+  test('a walk-in visit leaves appointmentId null', () async {
+    final visit = await repo.createVisit(input());
+    expect(visit.appointmentId, isNull);
+    final raw = (await db.doc('visits/${visit.id}').get()).data()!;
+    expect(raw['appointmentId'], isNull);
   });
 
   test('a signed-out user cannot create a visit', () async {

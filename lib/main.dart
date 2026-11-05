@@ -11,6 +11,8 @@ import 'core/firebase/firebase_bootstrap.dart';
 import 'core/storage/file_store.dart';
 import 'core/storage/image_shrinker.dart';
 import 'core/storage/key_value_store.dart';
+import 'features/appointments/data/repositories/appointments_repository_impl.dart';
+import 'features/appointments/domain/repositories/appointments_repository.dart';
 import 'features/auth/data/repositories/auth_repository_impl.dart';
 import 'features/auth/data/repositories/dev_tools_repository_impl.dart';
 import 'features/auth/domain/repositories/auth_repository.dart';
@@ -88,6 +90,10 @@ Future<void> main() async {
         Provider<OperationsRepository>(
           create: (_) =>
               OperationsRepositoryImpl(firestore: firestore, auth: auth),
+        ),
+        Provider<AppointmentsRepository>(
+          create: (_) =>
+              AppointmentsRepositoryImpl(firestore: firestore, auth: auth),
         ),
         Provider<SettingsRepository>(
           create: (_) => SettingsRepositoryImpl(

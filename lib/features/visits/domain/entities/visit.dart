@@ -74,6 +74,7 @@ class Visit {
     this.completedAt,
     this.hasPrescription = false,
     this.operationId,
+    this.appointmentId,
     this.deleted = false,
     this.branchId = 'main',
   });
@@ -119,6 +120,9 @@ class Visit {
 
   /// The scheduled operation this token belongs to (Phase 5B).
   final String? operationId;
+
+  /// The appointment this token was issued for (Phase 6A).
+  final String? appointmentId;
   final bool deleted;
   final String branchId;
 
@@ -163,6 +167,7 @@ class Visit {
     completedAt: completedAt ?? this.completedAt,
     hasPrescription: hasPrescription,
     operationId: operationId,
+    appointmentId: appointmentId,
     deleted: deleted ?? this.deleted,
     branchId: branchId,
   );
@@ -202,6 +207,7 @@ class Visit {
       other.completedAt == completedAt &&
       other.hasPrescription == hasPrescription &&
       other.operationId == operationId &&
+      other.appointmentId == appointmentId &&
       other.deleted == deleted &&
       other.branchId == branchId;
 

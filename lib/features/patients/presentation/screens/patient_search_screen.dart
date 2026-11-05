@@ -400,9 +400,12 @@ class PatientRow extends StatelessWidget {
               ),
               child: const Text('New visit'),
             ),
-            const Tooltip(
-              message: 'Coming in Phase 6',
-              child: TextButton(onPressed: null, child: Text('Book')),
+            TextButton(
+              key: Key('patient-book-${patient.id}'),
+              onPressed: () => context.go(
+                AppRoutes.appointmentNewFor(role, patientId: patient.id),
+              ),
+              child: const Text('Book'),
             ),
           ],
           IconButton(

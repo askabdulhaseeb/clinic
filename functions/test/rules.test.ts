@@ -832,6 +832,19 @@ describe("appointments", () => {
     await assertFails(asAdmin().doc("appointments/a1").delete());
     await assertFails(asDoctor().doc("appointments/a1").delete());
   });
+  // Phase 6A: Arrived is set by the visit batch together with the visit id.
+  it("arrived needs a visitId, on update and on create", async () => {
+    await assertFails(asAlice().doc("appointments/a1").update({ status: "arrived", updatedBy: ALICE }));
+    await assertSucceeds(asAlice().doc("appointments/a1").update({ status: "arrived", visitId: "v9", updatedBy: ALICE }));
+    await assertFails(asAlice().doc("appointments/a8").set(appointment(ALICE, { source: "manual", status: "arrived" })));
+    await assertSucceeds(asAlice().doc("appointments/a9").set(appointment(ALICE, { source: "manual", status: "arrived", visitId: "v1" })));
+  });
+  it("reception books, reschedules, cancels and marks no-show", async () => {
+    await assertSucceeds(asAlice().doc("appointments/m1").set(appointment(ALICE, { source: "manual", time: "10:30", prescriptionId: null, notes: "Bring glasses" })));
+    await assertSucceeds(asAlice().doc("appointments/m1").update({ date: "2026-11-13", time: "4 pm", updatedBy: ALICE }));
+    await assertSucceeds(asAlice().doc("appointments/m1").update({ status: "noShow", updatedBy: ALICE }));
+    await assertSucceeds(asAlice().doc("appointments/m1").update({ status: "cancelled", updatedBy: ALICE }));
+  });
 });
 
 // ----- Phase 5B: reports (§4.13), operations (§4.14), visit-type defaults -----

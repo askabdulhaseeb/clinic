@@ -27,6 +27,7 @@ abstract final class AppRoutes {
   static const String receptionVisitPattern = '/reception/visits/:id';
   static const String receptionQueue = '/reception/queue';
   static const String receptionAppointments = '/reception/appointments';
+  static const String receptionAppointmentNew = '/reception/appointments/new';
   static const String receptionReminders = '/reception/reminders';
   static const String receptionSales = '/reception/sales';
   static const String receptionSummary = '/reception/summary';
@@ -58,6 +59,9 @@ abstract final class AppRoutes {
   // Admin may create visits too (FEATURES §3); the list itself is Phase 8.
   static const String adminVisitNew = '/admin/visits/new';
   static const String adminVisitPattern = '/admin/visits/:id';
+  // Admin re-uses the Reception appointment screens (Phase 6A).
+  static const String adminAppointments = '/admin/appointments';
+  static const String adminAppointmentNew = '/admin/appointments/new';
   static const String adminInventory = '/admin/inventory';
   static const String adminFinance = '/admin/finance';
   static const String adminCatalog = '/admin/catalog';
@@ -103,11 +107,32 @@ abstract final class AppRoutes {
   // Visit pages exist under Reception and Admin with the same screens.
   static String visitsFor(UserRole role) => '${rootFor(role)}/visits';
 
-  /// `/<role>/visits/new?patientId=` (Phase 4).
-  static String visitNewFor(UserRole role, {required String patientId}) => Uri(
+  /// `/<role>/visits/new?patientId=` (Phase 4); from an appointment's
+  /// Arrived button also `&appointmentId=&doctorId=` (Phase 6A).
+  static String visitNewFor(
+    UserRole role, {
+    required String patientId,
+    String? appointmentId,
+    String? doctorId,
+  }) => Uri(
     path: '${visitsFor(role)}/new',
-    queryParameters: {'patientId': patientId},
+    queryParameters: {
+      'patientId': patientId,
+      'appointmentId': ?appointmentId,
+      'doctorId': ?doctorId,
+    },
   ).toString();
+
+  // Appointment pages exist under Reception and Admin (Phase 6A).
+  static String appointmentsFor(UserRole role) =>
+      '${rootFor(role)}/appointments';
+
+  /// `/<role>/appointments/new?patientId=`.
+  static String appointmentNewFor(UserRole role, {required String patientId}) =>
+      Uri(
+        path: '${appointmentsFor(role)}/new',
+        queryParameters: {'patientId': patientId},
+      ).toString();
 
   static String visitFor(UserRole role, String id) => '${visitsFor(role)}/$id';
 

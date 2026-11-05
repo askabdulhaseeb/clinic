@@ -130,6 +130,13 @@ abstract final class ShellDestinations {
       primary: false,
     ),
     ShellDestination(
+      label: 'Appointments',
+      icon: Icons.event_outlined,
+      selectedIcon: Icons.event,
+      path: AppRoutes.adminAppointments,
+      primary: false,
+    ),
+    ShellDestination(
       label: 'Inventory',
       icon: Icons.inventory_2_outlined,
       selectedIcon: Icons.inventory_2,

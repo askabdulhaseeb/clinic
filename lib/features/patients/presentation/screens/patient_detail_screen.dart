@@ -11,6 +11,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/phone.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/page_header.dart';
+import '../../../appointments/presentation/widgets/patient_appointments_tab.dart';
 import '../../../auth/domain/entities/user_role.dart';
 import '../../../catalog/presentation/widgets/action_error_listener.dart';
 import '../../../prescriptions/domain/repositories/prescriptions_repository.dart';
@@ -388,7 +389,7 @@ class _FamilyCard extends StatelessWidget {
 }
 
 /// Visits (Phase 4; newest first, 3 per page, row opens the visit for a
-/// reprint), Reports and Appointments (placeholder until Phase 6).
+/// reprint), Reports (Phase 5B) and Appointments (Phase 6A).
 class _Tabs extends StatelessWidget {
   const _Tabs({
     required this.history,
@@ -439,10 +440,7 @@ class _Tabs extends StatelessWidget {
                       openUrl: openUrl,
                     ),
                   ),
-                  const _ComingSoon(
-                    icon: Icons.event_outlined,
-                    text: 'Appointments — coming in Phase 6',
-                  ),
+                  PatientAppointmentsTab(patient: patient, role: role),
                 ],
               ),
             ),
@@ -495,14 +493,4 @@ class _VisitsList extends StatelessWidget {
       },
     );
   }
-}
-
-class _ComingSoon extends StatelessWidget {
-  const _ComingSoon({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => EmptyState(icon: icon, title: text);
 }

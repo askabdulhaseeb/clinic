@@ -34,10 +34,16 @@ class NewVisitScreen extends StatelessWidget {
     super.key,
     required this.role,
     required this.patientId,
+    this.appointmentId,
+    this.doctorId,
   });
 
   final UserRole role;
   final String patientId;
+
+  /// Set when opened from an appointment's Arrived button (Phase 6A).
+  final String? appointmentId;
+  final String? doctorId;
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +61,8 @@ class NewVisitScreen extends StatelessWidget {
         defaultCopies: settings.defaultReceiptCopies,
         operationsRepository: context.read<OperationsRepository?>(),
         waitingCount: today?.waitingCount,
+        initialDoctorId: doctorId,
+        appointmentId: appointmentId,
       ),
       child: NewVisitView(
         role: role,

@@ -354,7 +354,9 @@ service cloud.firestore {
         && isNonEmptyString(a.doctorId)
         && isNonEmptyString(a.date)
         && a.status in ['booked', 'arrived', 'cancelled', 'noShow']
-        && a.source in ['manual', 'followUp', 'postOp', 'operation'];
+        && a.source in ['manual', 'followUp', 'postOp', 'operation']
+        // Phase 6A: Arrived comes from the visit batch with the visit id.
+        && (a.status != 'arrived' || isNonEmptyString(a.visitId));
     }
 
     match /appointments/{appointmentId} {
