@@ -86,8 +86,15 @@ class OperationsRepositoryImpl implements OperationsRepository {
   };
 
   /// Books the surgery-day and post-op appointments for [op] into [batch]
-  /// and returns the operation with their IDs.
-  Operation _bookAppointments(WriteBatch batch, Operation op, String uid) {
+  /// and returns the operation with their IDs. With [keepSurgery] the
+  /// existing surgery-day appointment is left as it is and only the
+  /// post-op ones are booked (days-only change, decided 6 Nov 2026).
+  Operation _bookAppointments(
+    WriteBatch batch,
+    Operation op,
+    String uid, {
+    bool keepSurgery = false,
+  }) {
     Appointment make(
       String id,
       String date,
@@ -109,18 +116,22 @@ class OperationsRepositoryImpl implements OperationsRepository {
       createdBy: uid,
       branchId: op.branchId,
     );
-    final surgery = _appointments.doc();
-    batch.set(surgery, {
-      ...AppointmentModel.toMap(
-        make(
-          surgery.id,
-          op.scheduledDate,
-          AppointmentSource.operation,
-          op.visitTypeName,
+    String? surgeryId = op.surgeryAppointmentId;
+    if (!keepSurgery || surgeryId == null) {
+      final surgery = _appointments.doc();
+      surgeryId = surgery.id;
+      batch.set(surgery, {
+        ...AppointmentModel.toMap(
+          make(
+            surgery.id,
+            op.scheduledDate,
+            AppointmentSource.operation,
+            op.visitTypeName,
+          ),
         ),
-      ),
-      ..._stamps(uid, create: true),
-    });
+        ..._stamps(uid, create: true),
+      });
+    }
     final followUps = <String>[];
     for (final day in op.postOpDays) {
       final ref = _appointments.doc();
@@ -138,13 +149,21 @@ class OperationsRepositoryImpl implements OperationsRepository {
       });
     }
     return op.copyWith(
-      surgeryAppointmentId: surgery.id,
+      surgeryAppointmentId: surgeryId,
       followUpAppointmentIds: followUps,
     );
   }
 
-  void _cancelAppointments(WriteBatch batch, Operation op, String uid) {
-    for (final id in [?op.surgeryAppointmentId, ...op.followUpAppointmentIds]) {
+  void _cancelAppointments(
+    WriteBatch batch,
+    Operation op,
+    String uid, {
+    bool keepSurgery = false,
+  }) {
+    for (final id in [
+      if (!keepSurgery) ?op.surgeryAppointmentId,
+      ...op.followUpAppointmentIds,
+    ]) {
       batch.update(_appointments.doc(id), {
         'status': AppointmentStatus.cancelled.key,
         ..._stamps(uid),
@@ -270,17 +289,20 @@ class OperationsRepositoryImpl implements OperationsRepository {
     if (dateProblem != null) {
       throw AppException(dateProblem, code: 'invalid-argument');
     }
+    // A days-only change keeps the surgery appointment, so the operation
+    // update touches only what the reception rule allows.
+    final keepSurgery = date == operation.scheduledDate;
     final batch = _db.batch();
-    _cancelAppointments(batch, operation, uid);
+    _cancelAppointments(batch, operation, uid, keepSurgery: keepSurgery);
     var op = operation.copyWith(
       scheduledDate: date,
       postOpDays: PostOp.normalise(postOpDays ?? operation.postOpDays),
     );
-    op = _bookAppointments(batch, op, uid);
+    op = _bookAppointments(batch, op, uid, keepSurgery: keepSurgery);
     batch.update(_ops.doc(op.id), {
-      'scheduledDate': op.scheduledDate,
+      if (!keepSurgery) 'scheduledDate': op.scheduledDate,
       'postOpDays': List<int>.of(op.postOpDays),
-      'surgeryAppointmentId': op.surgeryAppointmentId,
+      if (!keepSurgery) 'surgeryAppointmentId': op.surgeryAppointmentId,
       'followUpAppointmentIds': List<String>.of(op.followUpAppointmentIds),
       ..._stamps(uid),
     });

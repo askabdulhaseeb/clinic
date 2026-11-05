@@ -46,4 +46,22 @@ abstract class AppointmentsRepository {
   Future<void> cancel(Appointment appointment);
 
   Future<void> markNoShow(Appointment appointment);
+
+  /// Every appointment dated [from] to [to] inclusive, read once (the
+  /// reminders screen, Phase 6B; grouping is `ReminderRules.sections`).
+  Future<List<Appointment>> remindersWindow({
+    required String from,
+    required String to,
+  });
+
+  /// Stamps `reminderSentAt` / `reminderSentBy` after Send.
+  Future<void> markReminderSent(Appointment appointment);
+
+  /// A doctor's booked appointments dated [from] to [to], read once
+  /// (index `doctorId, date`).
+  Future<List<Appointment>> doctorUpcoming(
+    String doctorId, {
+    required String from,
+    required String to,
+  });
 }

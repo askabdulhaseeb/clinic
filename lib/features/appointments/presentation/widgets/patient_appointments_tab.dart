@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -6,7 +8,9 @@ import '../../../../core/routing/app_routes.dart';
 import '../../../../core/widgets/appointment_chips.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../auth/domain/entities/user_role.dart';
+import '../../../operations/presentation/widgets/post_op_days_sheet.dart';
 import '../../../patients/domain/entities/patient.dart';
+import '../../domain/entities/appointment.dart';
 import '../../domain/repositories/appointments_repository.dart';
 import '../viewmodels/patient_appointments_vm.dart';
 import 'appointment_dialogs.dart';
@@ -86,9 +90,24 @@ class _List extends StatelessWidget {
               ),
               trailing: Wrap(
                 spacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   AppointmentSourceChip(source: a.source),
                   AppointmentStatusChip(status: a.status),
+                  if (a.isBooked &&
+                      a.source == AppointmentSource.postOp &&
+                      a.operationId != null)
+                    IconButton(
+                      key: Key('patient-appt-postop-${a.id}'),
+                      tooltip: 'Change post-op days',
+                      icon: const Icon(Icons.event_repeat_outlined),
+                      onPressed: () => unawaited(
+                        showPostOpDaysSheet(
+                          context,
+                          operationId: a.operationId!,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),

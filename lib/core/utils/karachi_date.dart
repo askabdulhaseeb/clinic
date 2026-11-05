@@ -45,6 +45,28 @@ abstract final class KarachiDate {
     return probe.month == mo && probe.day == d;
   }
 
+  static const List<String> _months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  /// `2026-11-07` → `07 Nov 2026`, for screens and messages.
+  static String display(String key) {
+    final d = parse(key);
+    return '${d.day.toString().padLeft(2, '0')} ${_months[d.month - 1]} '
+        '${d.year}';
+  }
+
   /// Adds [days] (may be negative) to a date key.
   static String addDays(String key, int days) =>
       format(parse(key).add(Duration(days: days)));

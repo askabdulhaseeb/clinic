@@ -209,6 +209,8 @@ Appointment sampleAppointment({
   String? prescriptionId,
   String? visitId,
   String notes = '',
+  DateTime? reminderSentAt,
+  String? reminderSentBy,
   DateTime? createdAt,
 }) => Appointment(
   id: id,
@@ -227,6 +229,8 @@ Appointment sampleAppointment({
   prescriptionId: prescriptionId,
   visitId: visitId,
   notes: notes,
+  reminderSentAt: reminderSentAt,
+  reminderSentBy: reminderSentBy,
   createdBy: 'rec-1',
   createdAt: createdAt ?? DateTime.utc(2026, 11, 4, 6),
 );

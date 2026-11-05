@@ -1,6 +1,6 @@
 # UI Design
 
-**Status:** Draft v7 — 5 Nov 2026 (Phase 6A screens: appointments day view, book appointment, patient Appointments tab; v6: Phase 5B screens: report upload dialog and Reports tab, schedule-operation sheet, operations list and detail, Me-tab defaults editor, operation link on the new-visit form). v5 — 5 Nov 2026 (Phase 5A screens: doctor queue, consultation with prescription forms and follow-up, prescription PDF, doctor patient history, personal summary). v4 — 4 Nov 2026 (Phase 4 screens: new visit form, token dialog, visits list, queue board, shift summary, visit detail, sync badge). v3 — 4 Nov 2026 (Phase 3 screens: patient search, registration form, patient page, family dialogs). v2 — 3 Nov 2026 (Phase 2 screens: catalog tabs, forms, settings, first-run setup). Companion to [FEATURES.md](FEATURES.md) (what each screen does) and [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) (theme, packages, phases). This document fixes how screens are laid out and how users move between them. Screens are still reviewed one by one by the owner as they are built; this document is the starting point, not a pixel spec.
+**Status:** Draft v8 — 6 Nov 2026 (Phase 6B screens: reminders due today, doctor upcoming appointments, post-op days sheet; v7: Phase 6A screens: appointments day view, book appointment, patient Appointments tab; v6: Phase 5B screens: report upload dialog and Reports tab, schedule-operation sheet, operations list and detail, Me-tab defaults editor, operation link on the new-visit form). v5 — 5 Nov 2026 (Phase 5A screens: doctor queue, consultation with prescription forms and follow-up, prescription PDF, doctor patient history, personal summary). v4 — 4 Nov 2026 (Phase 4 screens: new visit form, token dialog, visits list, queue board, shift summary, visit detail, sync badge). v3 — 4 Nov 2026 (Phase 3 screens: patient search, registration form, patient page, family dialogs). v2 — 3 Nov 2026 (Phase 2 screens: catalog tabs, forms, settings, first-run setup). Companion to [FEATURES.md](FEATURES.md) (what each screen does) and [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) (theme, packages, phases). This document fixes how screens are laid out and how users move between them. Screens are still reviewed one by one by the owner as they are built; this document is the starting point, not a pixel spec.
 
 ---
 
@@ -116,7 +116,7 @@ Sidebar order: Patients, Visits, Queue, Appointments, Reminders, Sales, Summary.
 
 ### 3.3 Doctor (`/doctor`)
 
-Bottom tabs: Queue, Patients, Operations, Me. Sidebar on desktop uses the same four plus Appointments.
+Bottom tabs: Queue, Patients, Operations, Me, plus More holding Appointments (decided 6 Nov 2026). Sidebar on desktop shows all five.
 
 | Path | Screen | Phase |
 |---|---|---|
@@ -127,7 +127,7 @@ Bottom tabs: Queue, Patients, Operations, Me. Sidebar on desktop uses the same f
 | `/doctor/patients/:id` | Patient history across departments | 5A |
 | `/doctor/operations` | My operations: scheduled, done | 5B |
 | `/doctor/operations/:id` | Operation detail: checklist, post-op days, follow-up appointments | 5B |
-| `/doctor/appointments` | My upcoming appointments (desktop sidebar, inside Me on phones) | 6B |
+| `/doctor/appointments` | My upcoming appointments, next 30 days (desktop sidebar, under More on phones) | 6B |
 | `/doctor/me` | Personal summary: today, week, month (5A); defaults for my operation types (5B) | 5A / 5B |
 
 ### 3.4 Admin (`/admin`)
@@ -273,7 +273,13 @@ Settings is one scrolling form in three cards (Clinic with logo row, Receipts, W
 Tabs per lens type. Grid with SPH down the side and CYL across the top; each cell shows stock on hand, red tint at or below the low-stock threshold, grey when the item does not exist. Tapping a cell opens the item or, in the sale picker, adds that lens to the sale. The sale picker pre-highlights the cell matching the patient's latest eye prescription.
 
 ### 4.11 Reminders due today (Reception)
-Three sections: Appointments tomorrow, Follow-ups due, Post-op follow-ups due. Each row: patient, phone, doctor, date, Send button. Send opens `wa.me/<phone>?text=<template>` in a new tab and marks the row sent with time and user. Sections for reminder types Admin has turned off are hidden.
+Four sections (decided 6 Nov 2026): Appointments tomorrow (manual and surgery-day), Follow-ups due and Post-op follow-ups due (today to today + follow-up reminder days), Overdue (booked follow-ups and post-ops from the last 7 days). Each row (`rem-row-<id>`): patient and number, phone, doctor, date and time, source chip, Send (`rem-send-<id>`, opens `wa.me/<phone>?text=<template>` in a new tab and marks the row sent). A sent row shows "Sent 06 Nov, 10:32" ("by you" when the signed-in user sent it) and a Send again link with the same key. Rows without a phone show "No phone" and no Send. Header: count and Refresh (`rem-refresh`); the list is read once when opened. Sections for reminder types Admin has turned off are hidden; section headers carry keys `rem-section-tomorrow`, `rem-section-followUp`, `rem-section-postOp`, `rem-section-overdue`. Empty state "Nothing due today".
+
+### 4.11a Post-op days sheet (Reception, Admin)
+Opened from a booked post-op row (`appt-postop-<id>` on the day view, `patient-appt-postop-<id>` on the patient tab). Bottom sheet with the operation type and surgery date, the day chips (`postop-day-<n>`, deletable), an add row (`postop-day-input`, `postop-day-add`), and Save (`postop-save`) which confirms (`postop-confirm`) before re-booking the post-op appointments. The surgery-day appointment is not touched.
+
+### 4.11b My upcoming appointments (Doctor)
+`/doctor/appointments`: the doctor's booked appointments for the next 30 days, grouped under day headers (`doc-appt-day-<date>`), rows `doc-appt-row-<id>` with time, patient, number and source chip; read-only. Header count and Refresh (`doc-appt-refresh`). Empty state "No upcoming appointments". Sidebar entry on desktop; under More in the phone bottom bar.
 
 ### 4.12 Appointments day view (Reception, Admin)
 Decided 5 Nov 2026. Header row: previous day (`appt-date-prev`), the date (`appt-date-pick`, opens a calendar; a "Today" chip (`appt-date-today`) when another day is shown), next day (`appt-date-next`) and Book (`appt-book`, goes to patient search). Below, the queue-board layout: one card per doctor with appointments that day (`appt-column-<doctorId>`, catalog name order), rows `appt-row-<id>` with the time (or "No time"), patient name and number, a source chip (Manual, Follow-up, Post-op, Operation) and the appointment status chip; booked rows first (by time, then name), then arrived, then cancelled and no-show. Row actions by status and source: booked → Arrived (`appt-arrived-<id>`, opens the new-visit form with the doctor preselected), Reschedule (`appt-reschedule-<id>`, dialog with date `appt-reschedule-date`, time `appt-reschedule-time`, Save `appt-reschedule-save`), Cancel (`appt-cancel-<id>`, confirm `appt-cancel-confirm`), No-show (`appt-noshow-<id>`, only on or after the day, confirm `appt-noshow-confirm`); surgery-day rows get Arrived and No-show only; arrived, cancelled and no-show rows are read-only. Empty state "No appointments on this day".

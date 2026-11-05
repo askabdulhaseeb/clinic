@@ -839,6 +839,12 @@ describe("appointments", () => {
     await assertFails(asAlice().doc("appointments/a8").set(appointment(ALICE, { source: "manual", status: "arrived" })));
     await assertSucceeds(asAlice().doc("appointments/a9").set(appointment(ALICE, { source: "manual", status: "arrived", visitId: "v1" })));
   });
+  // Phase 6B: Send on the reminders screen stamps the appointment.
+  it("reception marks a reminder sent", async () => {
+    await assertSucceeds(
+      asAlice().doc("appointments/a1").update({ reminderSentAt: new Date(), reminderSentBy: ALICE, updatedBy: ALICE })
+    );
+  });
   it("reception books, reschedules, cancels and marks no-show", async () => {
     await assertSucceeds(asAlice().doc("appointments/m1").set(appointment(ALICE, { source: "manual", time: "10:30", prescriptionId: null, notes: "Bring glasses" })));
     await assertSucceeds(asAlice().doc("appointments/m1").update({ date: "2026-11-13", time: "4 pm", updatedBy: ALICE }));

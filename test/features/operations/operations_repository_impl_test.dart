@@ -206,6 +206,35 @@ void main() {
   );
 
   test(
+    'changing only the days keeps the surgery appointment (reception rule)',
+    () async {
+      final op = await repo.schedule(input());
+      final updated = await repo.reschedule(op, postOpDays: [1, 14]);
+
+      expect(updated.surgeryAppointmentId, op.surgeryAppointmentId);
+      expect(updated.postOpDays, [1, 14]);
+      final apps = await appointments();
+      final surgery = apps.singleWhere((a) => a['source'] == 'operation');
+      expect(surgery['status'], 'booked');
+      expect(surgery['id'], op.surgeryAppointmentId);
+      final booked = apps.where((a) => a['status'] == 'booked').toList();
+      expect(booked.map((a) => a['date']), [
+        '2026-11-10',
+        '2026-11-11',
+        '2026-11-24',
+      ]);
+      expect(apps.where((a) => a['status'] == 'cancelled'), hasLength(3));
+      final doc = (await db.doc('operations/${op.id}').get()).data()!;
+      expect(doc['surgeryAppointmentId'], op.surgeryAppointmentId);
+      expect(doc['postOpDays'], [1, 14]);
+      expect(
+        doc['followUpAppointmentIds'],
+        booked.skip(1).map((a) => a['id']).toList(),
+      );
+    },
+  );
+
+  test(
     'mark done needs the checklist complete or an override reason',
     () async {
       final op = await repo.schedule(input());

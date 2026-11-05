@@ -40,6 +40,7 @@ abstract final class AppRoutes {
   static const String doctorOperations = '/doctor/operations';
   static const String doctorOperationPattern = '/doctor/operations/:id';
   static const String doctorMe = '/doctor/me';
+  static const String doctorAppointments = '/doctor/appointments';
 
   /// `/doctor/visits/<id>`: the consultation page (Phase 5A).
   static String doctorVisit(String id) => '/doctor/visits/$id';

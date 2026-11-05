@@ -58,6 +58,56 @@ class AppointmentsRepositoryImpl implements AppointmentsRepository {
       })
       .handleError((Object e) => throw mapFirestoreError(e));
 
+  Future<List<Appointment>> _read(Query<Map<String, dynamic>> q) =>
+      _guard(() async {
+        final snap = await q.get();
+        final list =
+            snap.docs
+                .map((d) => AppointmentModel.fromMap(d.id, d.data()))
+                .toList()
+              ..sort(_dayOrder);
+        return List<Appointment>.unmodifiable(list);
+      });
+
+  @override
+  Future<List<Appointment>> remindersWindow({
+    required String from,
+    required String to,
+  }) => _read(
+    _appointments
+        .where('date', isGreaterThanOrEqualTo: from)
+        .where('date', isLessThanOrEqualTo: to),
+  );
+
+  @override
+  Future<List<Appointment>> doctorUpcoming(
+    String doctorId, {
+    required String from,
+    required String to,
+  }) async {
+    final list = await _read(
+      _appointments
+          .where('doctorId', isEqualTo: doctorId)
+          .where('date', isGreaterThanOrEqualTo: from)
+          .where('date', isLessThanOrEqualTo: to),
+    );
+    return List<Appointment>.unmodifiable(
+      list.where((a) => a.status == AppointmentStatus.booked),
+    );
+  }
+
+  @override
+  Future<void> markReminderSent(Appointment appointment) => _guard(() async {
+    final uid = _uid;
+    await commitOrQueue(
+      _appointments.doc(appointment.id).update({
+        'reminderSentAt': Timestamp.fromDate(_clock()),
+        'reminderSentBy': uid,
+        ..._stamps(uid),
+      }),
+    );
+  });
+
   @override
   Stream<List<Appointment>> watchDay(String date) =>
       _list(_appointments.where('date', isEqualTo: date));

@@ -107,6 +107,14 @@ abstract final class ShellDestinations {
       selectedIcon: Icons.person,
       path: AppRoutes.doctorMe,
     ),
+    // Phase 6B: sidebar on desktop, under More in the phone bottom bar.
+    ShellDestination(
+      label: 'Appointments',
+      icon: Icons.event_outlined,
+      selectedIcon: Icons.event,
+      path: AppRoutes.doctorAppointments,
+      primary: false,
+    ),
   ];
 
   static const admin = [

@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 
 import '../../features/appointments/presentation/screens/appointments_screen.dart';
 import '../../features/appointments/presentation/screens/book_appointment_screen.dart';
+import '../../features/appointments/presentation/screens/doctor_appointments_screen.dart';
+import '../../features/appointments/presentation/screens/reminders_screen.dart';
 import '../../features/auth/domain/entities/user_role.dart';
 import '../../features/auth/presentation/screens/change_password_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
@@ -312,6 +314,10 @@ Widget _screenFor(String path, String label) {
       return const AppointmentsScreen(role: UserRole.reception);
     case AppRoutes.adminAppointments:
       return const AppointmentsScreen(role: UserRole.admin);
+    case AppRoutes.receptionReminders:
+      return const RemindersScreen();
+    case AppRoutes.doctorAppointments:
+      return const DoctorAppointmentsScreen();
     case AppRoutes.doctorQueue:
       return const DoctorQueueScreen();
     case AppRoutes.doctorPatients:

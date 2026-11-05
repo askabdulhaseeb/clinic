@@ -85,4 +85,37 @@ class Appointment {
   final String createdBy;
   final DateTime? createdAt;
   final String branchId;
+
+  bool get isBooked => status == AppointmentStatus.booked;
+
+  Appointment copyWith({
+    String? date,
+    String? time,
+    AppointmentStatus? status,
+    String? visitId,
+    DateTime? reminderSentAt,
+    String? reminderSentBy,
+  }) => Appointment(
+    id: id,
+    patientId: patientId,
+    patientName: patientName,
+    patientNo: patientNo,
+    phone: phone,
+    doctorId: doctorId,
+    doctorName: doctorName,
+    departmentId: departmentId,
+    date: date ?? this.date,
+    time: time ?? this.time,
+    source: source,
+    status: status ?? this.status,
+    operationId: operationId,
+    prescriptionId: prescriptionId,
+    visitId: visitId ?? this.visitId,
+    notes: notes,
+    reminderSentAt: reminderSentAt ?? this.reminderSentAt,
+    reminderSentBy: reminderSentBy ?? this.reminderSentBy,
+    createdBy: createdBy,
+    createdAt: createdAt,
+    branchId: branchId,
+  );
 }

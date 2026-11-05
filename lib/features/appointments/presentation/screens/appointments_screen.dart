@@ -13,6 +13,7 @@ import '../../../../core/widgets/empty_state.dart';
 import '../../../auth/domain/entities/user_role.dart';
 import '../../../catalog/domain/repositories/catalog_repository.dart';
 import '../../../catalog/presentation/widgets/action_error_listener.dart';
+import '../../../operations/presentation/widgets/post_op_days_sheet.dart';
 import '../../domain/appointment_rules.dart';
 import '../../domain/entities/appointment.dart';
 import '../../domain/repositories/appointments_repository.dart';
@@ -334,6 +335,19 @@ class _Row extends StatelessWidget {
                     alignment: WrapAlignment.end,
                     spacing: 4,
                     children: [
+                      if (a.source == AppointmentSource.postOp &&
+                          a.operationId != null)
+                        IconButton(
+                          key: Key('appt-postop-${a.id}'),
+                          tooltip: 'Change post-op days',
+                          icon: const Icon(Icons.event_repeat_outlined),
+                          onPressed: () => unawaited(
+                            showPostOpDaysSheet(
+                              context,
+                              operationId: a.operationId!,
+                            ),
+                          ),
+                        ),
                       if (actions.contains(AppointmentAction.reschedule))
                         IconButton(
                           key: Key('appt-reschedule-${a.id}'),

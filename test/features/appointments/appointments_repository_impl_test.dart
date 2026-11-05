@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -168,6 +169,66 @@ void main() {
       'cancelled',
     );
     expect((await db.doc('appointments/n').get()).data()!['status'], 'noShow');
+  });
+
+  test('remindersWindow reads the date range once, every status', () async {
+    await seed(sampleAppointment(id: 'before', date: '2026-10-29'));
+    await seed(sampleAppointment(id: 'from', date: '2026-10-30'));
+    await seed(
+      sampleAppointment(
+        id: 'mid',
+        date: '2026-11-05',
+        status: AppointmentStatus.cancelled,
+      ),
+    );
+    await seed(sampleAppointment(id: 'to', date: '2026-11-07', time: '09:00'));
+    await seed(sampleAppointment(id: 'after', date: '2026-11-08'));
+
+    final list = await repo.remindersWindow(
+      from: '2026-10-30',
+      to: '2026-11-07',
+    );
+    expect(list.map((a) => a.id), ['from', 'mid', 'to']);
+  });
+
+  test('markReminderSent stamps the time and the sender', () async {
+    final a = sampleAppointment(id: 's', date: '2026-11-06');
+    await seed(a);
+
+    await repo.markReminderSent(a);
+
+    final doc = (await db.doc('appointments/s').get()).data()!;
+    expect(doc['reminderSentAt'], Timestamp.fromDate(now));
+    expect(doc['reminderSentBy'], 'rec-1');
+    expect(doc['updatedBy'], 'rec-1');
+    expect(doc['status'], 'booked');
+  });
+
+  test('doctorUpcoming lists the doctor\'s booked rows in the range', () async {
+    await seed(sampleAppointment(id: 'd2', date: '2026-11-08', time: '10:00'));
+    await seed(sampleAppointment(id: 'd1', date: '2026-11-06'));
+    await seed(
+      sampleAppointment(
+        id: 'cancelled',
+        date: '2026-11-07',
+        status: AppointmentStatus.cancelled,
+      ),
+    );
+    await seed(
+      sampleAppointment(
+        id: 'other',
+        date: '2026-11-07',
+        doctor: doctorUnlinked,
+      ),
+    );
+    await seed(sampleAppointment(id: 'late', date: '2026-12-10'));
+
+    final list = await repo.doctorUpcoming(
+      'doctor-sara',
+      from: '2026-11-06',
+      to: '2026-12-06',
+    );
+    expect(list.map((a) => a.id), ['d1', 'd2']);
   });
 
   test('markNoShow refuses a future appointment', () async {
