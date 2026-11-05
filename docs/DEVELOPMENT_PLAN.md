@@ -16,7 +16,7 @@ Draft v9 — 5 Nov 2026. v9: Phase 5B decisions and build notes (reports with cl
 | Theme details | Light + dark, follows system. Roboto (Flutter default). Density compact on desktop and desktop browsers, standard on phones (`VisualDensity.adaptivePlatformDensity`). Launcher name and browser title: **Clinic**. |
 | Build order | Admin setup first, then Reception visit flow, Doctor, Appointments, Inventory, Finance, hardening. |
 | Firebase project | `ramzan-clinic-web` (project number 662931473606), created by the owner. Android, iOS, web and Windows apps registered; `lib/firebase_options.dart` generated. Firestore, Auth (Email/Password) and Blaze enabled on 31 Oct 2026. Storage bucket not yet created: it must be created in **us-central1** (no-cost quota), not Mumbai. |
-| Cost | Stay inside Blaze no-cost quotas at 500 visits a day (FIREBASE_ARCHITECTURE §11). No photo prescriptions, no managed backup, summaries by increments. |
+| Cost | Stay inside Blaze no-cost quotas at 500 visits a day, 300 of them new patients (owner figure, 5 Nov 2026; FIREBASE_ARCHITECTURE §11). No photo prescriptions, no managed backup, summaries by increments, no listeners over whole collections. |
 | Dev backend | Flutter app talks to the live Firebase project during development. Cloud Functions and rules are developed on the local Emulator Suite, then deployed. |
 | Test backend | All integration, rules and functions tests run against the local Firestore Emulator Suite with seed data. Tests never touch the live project. No second Firebase project. |
 | Automated tests | Full: unit tests (domain + view models), widget tests (every screen), integration tests (key flows). Firestore rules tests on the emulator. |

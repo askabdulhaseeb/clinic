@@ -10,7 +10,7 @@
 | Topic | Decision |
 |---|---|
 | Firebase project | One new project, Blaze plan. No separate dev project; test data is created and cleaned by hand before go-live. |
-| Region | `asia-south1` (Mumbai) for Firestore and Functions, closest region to Pakistan. Storage bucket in `us-central1`, because Firebase's no-cost Storage quota (5 GB stored, 100 GB download a month) applies only to US buckets. |
+| Region | `asia-south1` (Mumbai) for Firestore and Functions, closest region to Pakistan. Storage bucket in `us-central1`, because Firebase's no-cost Storage quota (5 GB stored, 1 GB download a day) applies only to US buckets. |
 | Structure | Top-level collections. Every record carries `branchId`. One branch document exists today. |
 | Auth | Firebase Auth, email and password. Roles stored in custom claims and mirrored in the user document. Admin creates users through a Cloud Function. |
 | Patient ID | `YY-NNNNN`, e.g. `26-00341`. Assigned by a Cloud Function on sync. Offline, a temporary ID `T-XXXXX` is shown. |
@@ -433,18 +433,23 @@ The first Admin user is created with the Firebase console (or the dev test-admin
 
 ## 11. Cost Expectations
 
-Target: stay inside the Blaze no-cost quotas. Sized for **500 visits a day** (about 100 new patients, 200 appointments, 100 sales and 50 report uploads a day, 10 doctors on phones, 2 reception PCs).
+Target: stay inside the Blaze no-cost quotas. Re-sized 5 Nov 2026 (owner's figures) for **500 visits a day: 300 new patients and 200 returning patients**, about 200 new families, 50 report uploads, 10 operations, 10 doctors on phones, 2 reception PCs and one Admin screen. Phases 6 to 8 (appointments, sales, stock, summaries) are not built yet and are estimated separately in the last row.
 
 | Resource | Daily use at 500 visits | No-cost quota | Monthly cost |
 |---|---|---|---|
-| Firestore writes | about 9,000 (visits ×4, prescriptions, patients, appointments, sales, stock, summaries, ledger) | 20,000 / day | 0 |
-| Firestore reads | about 15,000 (today's-visits listener fan-out about 8,000; patient delta pulls about 600 per reception device, mostly empty polls; local-first searches cost only on cache misses, about 1,000; patient and consultation pages open the patient's history, about 5,000; tokens from the cache, never a server query; doctor summary is three aggregate reads per open) | 50,000 / day | 0 |
-| Firestore storage incl. indexes | grows about 1.5 GiB a year | 1 GiB | 0 in year 1, then about 0.10 USD per extra GiB |
-| Cloud Functions | about 8,000 invocations | 2,000,000 / month | 0 |
-| Cloud Storage (us-central1) | reports about 50 MB a day, 1.5 GB a month | 5 GB stored, 100 GB download / month | 0 for the first 3 to 4 months, then about 0.02 USD per GB; about 0.30 USD a month by end of year 1 |
+| Firestore reads | about 22,000: today's-visits listeners (3 whole-day screens, each visit changes 3 to 4 times, plus doctors' own queues and phone re-opens) 9,500; patient delta pulls on 2 PCs (about 1,000 changed documents a day plus 2 polls every 5 minutes) 2,500; searches (cache misses, the phone check before each registration) 1,600 at first and under 1,000 once the cache has warmed; new-visit form 1,000; doctor consultations (visit, prescription, patient history, see below) 3,800; patient pages at reception 2,000; receipt and visit pages 500; Function triggers 1,000; catalog, settings and summary aggregates 300 | 50,000 / day | 0 |
+| Firestore writes | about 5,000: 300 new patients and 200 families (patient, family counter, numbering trigger) 1,400; 500 visits (create, patient counter, start, prescription, completion, follow-up appointment) 3,500; operations and reports 100 | 20,000 / day | 0 |
+| Firestore storage incl. indexes | about 4 MB a day, 120 MB a month, 1.4 GiB a year (about 110,000 new patients a year with their `searchKeys` index entries) | 1 GiB | 0 for about 8 months, then about 0.10 to 0.20 USD a month in year 1, growing by that much each year |
+| Cloud Functions | about 500 invocations (300 `assignPatientNo`, 200 `checkDuplicateFamilyPhone`, a few callables) | 2,000,000 / month | 0 |
+| Cloud Storage (us-central1) | reports about 10 MB a day (images shrunk to 1200 px), 300 MB a month | 5 GB stored, 1 GB download / day | 0 for about 16 months, then about 0.02 USD per GB stored |
 | Hosting, Auth, App Check | small | generous | 0 |
+| Phases 6 to 8 (estimate) | appointments 200 reads and writes, sales and stock about 300 writes, summaries about 1,000 trigger invocations and writes | within the above | 0 |
 
-Expected bill: 0 USD for the first months, under 1 USD a month by the end of year 1, 1 to 2 USD a month by year 3 as reports accumulate. Things that would break the target and are therefore not in the design: full-day recompute of summaries, nightly full exports, photo prescriptions, a Mumbai Storage bucket. A new reception device downloads nothing up front: its cache fills from searches and delta pulls. Revised 5 Nov 2026: the earlier design (full `patients` and `families` listeners, searches on the server) was measured against Firestore's billing rules and would have cost 20,000 to 90,000 reads a day in searches plus a full re-read of both collections per reception device after every disconnect longer than 30 minutes (Firestore bills a resumed listener as a new query after that), which is why it was replaced by the local-first search and delta sync in §9.
+Expected bill: 0 USD for the first eight months, well under 1 USD a month through year two. The quota is per day, so one unusual day matters more than the monthly average; reads have about 2x headroom. Things that would break the target and are therefore not in the design: full-day recompute of summaries, nightly full exports, photo prescriptions, a Mumbai Storage bucket, live listeners over whole collections.
+
+**Doctor history reads, the item that grows with time.** Opening a consultation (`ConsultationViewModel`) subscribes to the visit, its prescription, and the patient's every visit, prescription and operation (`watchPatientVisits`, `watchPatientPrescriptions`, `watchPatientOperations`, no limit). A new patient costs about 4 reads; a returning patient costs 3 plus two reads per past visit (the visit and its prescription), so 13 at 5 past visits and 63 at 30. The reception patient page (`PatientDetailViewModel`) opens the same visits and prescriptions lists. At today's mix (200 returning patients averaging 5 past visits) this is about 3,800 reads a day; when chronic patients reach 30 visits it becomes about 13,000 and is the first item to push a busy day past the quota. Planned fix, not yet built: load the latest 10 visits and prescriptions (`orderBy date desc, limit 10`, composite indexes on `patientId` + `date` for `visits` and `prescriptions`) and fetch the rest only when the doctor opens the History tab.
+
+A new reception device downloads nothing up front: its cache fills from searches and delta pulls. Revised 5 Nov 2026: the earlier design (full `patients` and `families` listeners, searches on the server) was measured against Firestore's billing rules and would have cost 20,000 to 90,000 reads a day in searches plus a full re-read of both collections per reception device after every disconnect longer than 30 minutes (Firestore bills a resumed listener as a new query after that), which is why it was replaced by the local-first search and delta sync in §9.
 
 ---
 
