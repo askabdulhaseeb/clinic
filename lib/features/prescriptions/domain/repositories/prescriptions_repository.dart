@@ -7,8 +7,9 @@ import '../entities/prescription.dart';
 abstract class PrescriptionsRepository {
   Stream<Prescription?> watchPrescription(String visitId);
 
-  /// A patient's prescriptions, newest visit day first.
-  Stream<List<Prescription>> watchPatientPrescriptions(String patientId);
+  /// The prescriptions written on [visitIds] (one read each, missing ones
+  /// skipped), in the order given. Used by the paged history.
+  Future<List<Prescription>> getPrescriptions(Iterable<String> visitIds);
 
   /// Validates and normalises [prescription], writes it under the visit's
   /// ID, sets `visits.hasPrescription` (and completes the visit when

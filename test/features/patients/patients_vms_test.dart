@@ -450,25 +450,6 @@ void main() {
     });
 
     test(
-      'lists the patient\'s visits when a visits repository is given',
-      () async {
-        final visits = MockVisitsRepository();
-        when(() => visits.watchPatientVisits('pat-sara')).thenAnswer(
-          (_) => Stream.value([sampleVisit(id: 'x', patient: patientSara)]),
-        );
-        final vm = PatientDetailViewModel(
-          repository: repo,
-          visitsRepository: visits,
-          patientId: 'pat-sara',
-        );
-        patientCtl.add(patientSara);
-        await pumpEventQueue();
-        expect(vm.visits.map((v) => v.id), ['x']);
-        vm.dispose();
-      },
-    );
-
-    test(
       'loads patient, family and the other members; follows a move',
       () async {
         final vm = PatientDetailViewModel(
@@ -501,7 +482,6 @@ void main() {
       patientCtl.add(null);
       await pumpEventQueue();
       expect(vm.notFound, isTrue);
-      expect(vm.visits, isEmpty);
       expect(vm.loading, isFalse);
     });
 

@@ -39,13 +39,19 @@ void main() {
     rxStream = StreamController<Prescription?>.broadcast();
     printer = FakeReceiptPrinter();
     when(() => visits.watchVisit('v1')).thenAnswer((_) => Stream.value(visit));
-    when(() => visits.watchPatientVisits(any()))
-        .thenAnswer((_) => Stream.value([visit]));
+    when(
+      () => visits.patientVisitsPage(
+        any(),
+        limit: any(named: 'limit'),
+        cursor: any(named: 'cursor'),
+      ),
+    ).thenAnswer(
+      (_) async => VisitsPage(visits: [visit], cursor: 'v1', hasMore: false),
+    );
     when(() => visits.setStatus(any(), any())).thenAnswer((_) async {});
     when(() => rxRepo.watchPrescription('v1'))
         .thenAnswer((_) => rxStream.stream);
-    when(() => rxRepo.watchPatientPrescriptions(any()))
-        .thenAnswer((_) => Stream.value(const []));
+    when(() => rxRepo.getPrescriptions(any())).thenAnswer((_) async => []);
     when(
       () => rxRepo.save(
         any(),
@@ -275,29 +281,60 @@ void main() {
     },
   );
 
-  testWidgets('History tab lists past visits with their prescriptions', (
+  testWidgets('History tab loads 3 past visits on open, Load more adds 3', (
     tester,
   ) async {
-    final past = sampleVisit(
-      id: 'old',
-      date: '2026-10-01',
-      token: 4,
+    Visit past(int i) => sampleVisit(
+      id: 'old$i',
+      date: '2026-10-0$i',
+      token: i,
       status: VisitStatus.completed,
+      hasPrescription: i == 1,
     );
-    when(() => visits.watchPatientVisits(any()))
-        .thenAnswer((_) => Stream.value([visit, past]));
-    when(() => rxRepo.watchPatientPrescriptions(any())).thenAnswer(
-      (_) => Stream.value([
-        samplePrescription(visit: past, diagnosis: 'Old myopia'),
-      ]),
+    when(() => visits.patientVisitsPage('pat-ali', limit: 3, cursor: null))
+        .thenAnswer(
+          (_) async => VisitsPage(
+            visits: [visit, past(1), past(2)],
+            cursor: 'old2',
+            hasMore: true,
+          ),
+        );
+    when(() => visits.patientVisitsPage('pat-ali', limit: 3, cursor: 'old2'))
+        .thenAnswer(
+          (_) async => VisitsPage(
+            visits: [past(3), past(4)],
+            cursor: 'old4',
+            hasMore: false,
+          ),
+        );
+    when(() => rxRepo.getPrescriptions(['old1'])).thenAnswer(
+      (_) async => [
+        samplePrescription(visit: past(1), diagnosis: 'Old myopia'),
+      ],
     );
     await pump(tester);
+    // Nothing read before the tab is opened.
+    verifyNever(
+      () => visits.patientVisitsPage(
+        any(),
+        limit: any(named: 'limit'),
+        cursor: any(named: 'cursor'),
+      ),
+    );
     await tester.tap(find.text('History'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('history-visit-old')), findsOneWidget);
+    expect(find.byKey(const Key('history-visit-old1')), findsOneWidget);
+    expect(find.byKey(const Key('history-visit-old2')), findsOneWidget);
     expect(find.byKey(const Key('history-visit-v1')), findsNothing);
-    await tester.tap(find.byKey(const Key('history-visit-old')));
+    expect(find.byKey(const Key('history-visit-old3')), findsNothing);
+    await tester.tap(find.byKey(const Key('history-visit-old1')));
     await tester.pumpAndSettle();
     expect(find.text('Old myopia'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('history-load-more')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('history-visit-old3')), findsOneWidget);
+    expect(find.byKey(const Key('history-visit-old4')), findsOneWidget);
+    expect(find.byKey(const Key('history-load-more')), findsNothing);
   });
 }

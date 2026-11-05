@@ -243,6 +243,7 @@ void registerPrescriptionFallbacks() {
   registerVisitFallbacks();
   registerFallbackValue(sampleVisit());
   registerFallbackValue(samplePrescription());
+  registerFallbackValue(<String>[]);
   registerFallbackValue(const DateRange(from: '2026-11-04', to: '2026-11-04'));
 }
 
@@ -331,6 +332,7 @@ Visit sampleVisit({
   DateTime? createdAt,
   DateTime? completedAt,
   bool isFirstVisit = false,
+  bool hasPrescription = false,
 }) => Visit(
   id: id,
   patientId: patient.id,
@@ -361,6 +363,7 @@ Visit sampleVisit({
   createdBy: createdBy,
   createdAt: createdAt ?? DateTime.utc(2026, 11, 4, 6, 30),
   completedAt: completedAt,
+  hasPrescription: hasPrescription,
 );
 
 /// Call once (setUpAll) before using `any()` with patient inputs.

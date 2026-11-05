@@ -49,24 +49,15 @@ class PrescriptionsRepositoryImpl implements PrescriptionsRepository {
       .handleError((Object e) => throw mapFirestoreError(e));
 
   @override
-  Stream<List<Prescription>> watchPatientPrescriptions(String patientId) => _rx
-      .where('patientId', isEqualTo: patientId)
-      .snapshots()
-      .map((snap) {
-        final list =
-            snap.docs
-                .map((d) => PrescriptionModel.fromMap(d.id, d.data()))
-                .toList()
-              ..sort((a, b) {
-                final byDate = b.date.compareTo(a.date);
-                if (byDate != 0) return byDate;
-                final at = a.createdAt, bt = b.createdAt;
-                if (at == null || bt == null) return 0;
-                return bt.compareTo(at);
-              });
-        return List<Prescription>.unmodifiable(list);
-      })
-      .handleError((Object e) => throw mapFirestoreError(e));
+  Future<List<Prescription>> getPrescriptions(Iterable<String> visitIds) =>
+      _guard(() async {
+        final docs = await Future.wait(visitIds.map((id) => _rx.doc(id).get()));
+        return [
+          for (final d in docs)
+            if (d.data() case final data?)
+              PrescriptionModel.fromMap(d.id, data),
+        ];
+      });
 
   @override
   Future<Prescription> save(
@@ -239,5 +230,13 @@ class PrescriptionsRepositoryImpl implements PrescriptionsRepository {
       diagnosis: p.diagnosis.trim(),
       advice: p.advice.trim(),
     );
+  }
+
+  Future<T> _guard<T>(Future<T> Function() body) async {
+    try {
+      return await body();
+    } on FirebaseException catch (e) {
+      throw mapFirestoreError(e);
+    }
   }
 }

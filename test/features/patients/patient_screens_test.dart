@@ -14,8 +14,10 @@ import 'package:ramzan/features/patients/presentation/screens/patient_search_scr
 import 'package:ramzan/features/patients/presentation/viewmodels/patient_detail_vm.dart';
 import 'package:ramzan/features/patients/presentation/viewmodels/patient_form_vm.dart';
 import 'package:ramzan/features/patients/presentation/viewmodels/patient_search_vm.dart';
+import 'package:ramzan/features/prescriptions/domain/repositories/prescriptions_repository.dart';
 import 'package:ramzan/features/reports/domain/repositories/reports_repository.dart';
 import 'package:ramzan/features/visits/domain/repositories/visits_repository.dart';
+import 'package:ramzan/features/visits/presentation/viewmodels/patient_history_vm.dart';
 
 import '../../helpers/fakes.dart';
 
@@ -24,9 +26,13 @@ void main() {
   late MockPatientsRepository repo;
   late MockVisitsRepository visits;
   late MockReportsRepository reports;
+  late MockPrescriptionsRepository rxRepo;
   final today = DateTime.utc(2026, 11, 4, 6);
 
-  setUpAll(registerPatientFallbacks);
+  setUpAll(() {
+    registerPatientFallbacks();
+    registerPrescriptionFallbacks();
+  });
 
   setUp(() {
     auth = FakeAuthRepository();
@@ -35,8 +41,17 @@ void main() {
     reports = MockReportsRepository();
     when(() => reports.watchPatientReports(any()))
         .thenAnswer((_) => Stream.value(const []));
-    when(() => visits.watchPatientVisits(any()))
-        .thenAnswer((_) => Stream.value(const []));
+    rxRepo = MockPrescriptionsRepository();
+    when(
+      () => visits.patientVisitsPage(
+        any(),
+        limit: any(named: 'limit'),
+        cursor: any(named: 'cursor'),
+      ),
+    ).thenAnswer(
+      (_) async => const VisitsPage(visits: [], cursor: null, hasMore: false),
+    );
+    when(() => rxRepo.getPrescriptions(any())).thenAnswer((_) async => []);
     when(() => repo.getFamilies(any(), source: any(named: 'source')))
         .thenAnswer((inv) async {
           final ids = inv.positionalArguments.first as Iterable<String>;
@@ -85,6 +100,7 @@ void main() {
           ChangeNotifierProvider.value(value: session!),
           Provider<PatientsRepository>.value(value: repo),
           Provider<VisitsRepository>.value(value: visits),
+          Provider<PrescriptionsRepository>.value(value: rxRepo),
           Provider<ReportsRepository>.value(value: reports),
         ],
         child: MaterialApp.router(routerConfig: router),
@@ -332,21 +348,30 @@ void main() {
           .thenAnswer((_) => Stream.value([patientAli, patientSara]));
     });
 
-    Widget detail({Future<void> Function(Uri)? openUrl}) =>
+    Widget detail({Future<void> Function(Uri)? openUrl}) => MultiProvider(
+      providers: [
         ChangeNotifierProvider(
           create: (_) => PatientDetailViewModel(
             repository: repo,
-            visitsRepository: visits,
             patientId: 'pat-sara',
             clock: () => today,
           ),
-          child: PatientDetailView(
-            role: UserRole.reception,
-            openUrl: openUrl,
-            clinicName: 'Ramzan Clinic',
-            whatsAppTemplate: 'Dear {patient}, greetings from {clinic}.',
+        ),
+        ChangeNotifierProvider(
+          create: (_) => PatientHistoryViewModel(
+            visitsRepository: visits,
+            prescriptionsRepository: rxRepo,
+            patientId: 'pat-sara',
           ),
-        );
+        ),
+      ],
+      child: PatientDetailView(
+        role: UserRole.reception,
+        openUrl: openUrl,
+        clinicName: 'Ramzan Clinic',
+        whatsAppTemplate: 'Dear {patient}, greetings from {clinic}.',
+      ),
+    );
 
     testWidgets('shows header, family, members, placeholders, WhatsApp', (
       tester,
@@ -386,25 +411,30 @@ void main() {
     testWidgets('Visits tab lists past visits and New visit opens the form', (
       tester,
     ) async {
-      when(() => visits.watchPatientVisits('pat-sara')).thenAnswer(
-        (_) => Stream.value([
-          sampleVisit(id: 'old-2', token: 7, patient: patientSara),
-          sampleVisit(
-            id: 'old-1',
-            token: 3,
-            patient: patientSara,
-            visitType: eyeFollowUp,
-            fee: 500,
-            date: '2026-10-20',
-          ),
-        ]),
-      );
+      when(() => visits.patientVisitsPage('pat-sara', limit: 3, cursor: null))
+          .thenAnswer(
+            (_) async => VisitsPage(
+              visits: [
+                sampleVisit(id: 'old-2', token: 7, patient: patientSara),
+                sampleVisit(
+                  id: 'old-1',
+                  token: 3,
+                  patient: patientSara,
+                  visitType: eyeFollowUp,
+                  fee: 500,
+                  date: '2026-10-20',
+                ),
+              ],
+              cursor: 'old-1',
+              hasMore: false,
+            ),
+          );
       final router = await pump(
         tester,
         detail(),
         location: AppRoutes.receptionPatientPattern,
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(find.text('E-7'), findsOneWidget);
       expect(find.text('E-3'), findsOneWidget);
       expect(find.text('Rs 500'), findsOneWidget);

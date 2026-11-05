@@ -76,12 +76,37 @@ class VisitsRepositoryImpl implements VisitsRepository {
         .handleError((Object e) => throw mapFirestoreError(e));
   }
 
+  /// Last document of each page handed out, keyed by its visit id, so the
+  /// opaque page cursor stays a plain string outside `data/`.
+  final _pageEnds = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+
   @override
-  Stream<List<Visit>> watchPatientVisits(String patientId) => _visits
-      .where('patientId', isEqualTo: patientId)
-      .snapshots()
-      .map((snap) => _living(snap.docs))
-      .handleError((Object e) => throw mapFirestoreError(e));
+  Future<VisitsPage> patientVisitsPage(
+    String patientId, {
+    int limit = 3,
+    Object? cursor,
+  }) => _guard(() async {
+    // Ordered by the client creation stamp (always present, also while a
+    // visit is still queued offline); index patientId, deleted, createdAtLocal.
+    var q = _visits
+        .where('patientId', isEqualTo: patientId)
+        .where('deleted', isEqualTo: false)
+        .orderBy('createdAtLocal', descending: true);
+    if (cursor is String) {
+      final end = _pageEnds[cursor] ?? await _visits.doc(cursor).get();
+      q = q.startAfterDocument(end);
+    }
+    final snap = await q.limit(limit).get();
+    final visits = List<Visit>.unmodifiable(
+      snap.docs.map((d) => VisitModel.fromMap(d.id, d.data())),
+    );
+    if (snap.docs.isNotEmpty) _pageEnds[snap.docs.last.id] = snap.docs.last;
+    return VisitsPage(
+      visits: visits,
+      cursor: snap.docs.isEmpty ? null : snap.docs.last.id,
+      hasMore: snap.docs.length == limit,
+    );
+  });
 
   @override
   Stream<Visit?> watchVisit(String visitId) => _visits

@@ -88,14 +88,36 @@ class PeriodTotals {
 
 /// `visits` (FIREBASE_ARCHITECTURE §4.11). Reception and Admin create;
 /// reception, the assigned doctor and Admin move the status.
+/// One page of a patient's history.
+class VisitsPage {
+  const VisitsPage({
+    required this.visits,
+    required this.cursor,
+    required this.hasMore,
+  });
+
+  final List<Visit> visits;
+
+  /// Opaque position of the last visit; pass back to fetch the next page.
+  final Object? cursor;
+  final bool hasMore;
+}
+
 abstract class VisitsRepository {
   /// Visits whose clinic [date] (`YYYY-MM-DD`) matches, with metadata
   /// changes so pending writes and offline state are visible. With
   /// [doctorId] only that doctor's visits (doctor-only sessions, §9).
   Stream<DayVisits> watchVisitsOn(String date, {String? doctorId});
 
-  /// A patient's visits, newest first, soft-deleted ones removed.
-  Stream<List<Visit>> watchPatientVisits(String patientId);
+  /// One page of a patient's visits, newest first, soft-deleted ones
+  /// removed (FIREBASE_ARCHITECTURE §11 "doctor history reads"). Pass the
+  /// previous page's [VisitsPage.cursor] for the next page. Pages are read
+  /// once; nothing stays subscribed.
+  Future<VisitsPage> patientVisitsPage(
+    String patientId, {
+    int limit = 3,
+    Object? cursor,
+  });
 
   Stream<Visit?> watchVisit(String visitId);
 

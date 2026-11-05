@@ -13,12 +13,16 @@ import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/page_header.dart';
 import '../../../auth/domain/entities/user_role.dart';
 import '../../../catalog/presentation/widgets/action_error_listener.dart';
+import '../../../prescriptions/domain/repositories/prescriptions_repository.dart';
+import '../../../prescriptions/presentation/widgets/visit_history_list.dart';
 import '../../../reports/presentation/report_picker.dart';
 import '../../../reports/presentation/widgets/reports_tab.dart';
 import '../../../settings/domain/entities/clinic_settings.dart';
 import '../../../settings/presentation/viewmodels/settings_controller.dart';
 import '../../../visits/domain/repositories/visits_repository.dart';
 import '../../../visits/presentation/screens/visits_screen.dart';
+import '../../../visits/presentation/viewmodels/patient_history_vm.dart';
+import '../../../visits/presentation/widgets/patient_history_loader.dart';
 import '../../domain/entities/patient.dart';
 import '../../domain/repositories/patients_repository.dart';
 import '../viewmodels/patient_detail_vm.dart';
@@ -40,13 +44,24 @@ class PatientDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsController?>();
-    return ChangeNotifierProvider(
+    return MultiProvider(
       key: ValueKey(patientId),
-      create: (context) => PatientDetailViewModel(
-        repository: context.read<PatientsRepository>(),
-        visitsRepository: context.read<VisitsRepository?>(),
-        patientId: patientId,
-      ),
+      providers: [
+        ChangeNotifierProvider(
+          create: (context) => PatientDetailViewModel(
+            repository: context.read<PatientsRepository>(),
+            patientId: patientId,
+          ),
+        ),
+        // Visits tab: 3 at a time, read when the tab opens (§11).
+        ChangeNotifierProvider(
+          create: (context) => PatientHistoryViewModel(
+            visitsRepository: context.read<VisitsRepository>(),
+            prescriptionsRepository: context.read<PrescriptionsRepository>(),
+            patientId: patientId,
+          ),
+        ),
+      ],
       child: PatientDetailView(
         role: role,
         clinicName: settings?.clinicName ?? SettingsController.fallbackName,
@@ -118,7 +133,12 @@ class PatientDetailView extends StatelessWidget {
     final wide = Breakpoints.isExpanded(context);
 
     final family = _FamilyCard(vm: vm, role: role, patient: patient);
-    final tabs = _Tabs(vm: vm, role: role, patient: patient, openUrl: _open);
+    final tabs = _Tabs(
+      history: context.watch<PatientHistoryViewModel>(),
+      role: role,
+      patient: patient,
+      openUrl: _open,
+    );
 
     return Scaffold(
       body: Column(
@@ -367,17 +387,17 @@ class _FamilyCard extends StatelessWidget {
   }
 }
 
-/// Visits (Phase 4; newest first, row opens the visit for a reprint),
-/// Reports and Appointments (placeholders until Phases 5 and 6).
+/// Visits (Phase 4; newest first, 3 per page, row opens the visit for a
+/// reprint), Reports and Appointments (placeholder until Phase 6).
 class _Tabs extends StatelessWidget {
   const _Tabs({
-    required this.vm,
+    required this.history,
     required this.role,
     required this.patient,
     required this.openUrl,
   });
 
-  final PatientDetailViewModel vm;
+  final PatientHistoryViewModel history;
   final UserRole role;
   final Patient patient;
   final Future<void> Function(Uri uri) openUrl;
@@ -385,7 +405,7 @@ class _Tabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final visits = vm.visits;
+    final count = patient.visitCount;
     return DefaultTabController(
       length: 3,
       child: Card(
@@ -394,9 +414,7 @@ class _Tabs extends StatelessWidget {
           children: [
             TabBar(
               tabs: [
-                Tab(
-                  text: visits.isEmpty ? 'Visits' : 'Visits (${visits.length})',
-                ),
+                Tab(text: count == 0 ? 'Visits' : 'Visits ($count)'),
                 const Tab(text: 'Reports'),
                 const Tab(text: 'Appointments'),
               ],
@@ -406,28 +424,20 @@ class _Tabs extends StatelessWidget {
               height: 320,
               child: TabBarView(
                 children: [
-                  if (visits.isEmpty)
-                    const EmptyState(
-                      icon: Icons.receipt_long_outlined,
-                      title: 'No visits yet',
-                    )
-                  else
-                    ListView.separated(
-                      itemCount: visits.length,
-                      separatorBuilder: (_, _) => const Divider(height: 1),
-                      itemBuilder: (_, i) => VisitRow(
-                        visit: visits[i],
-                        showDate: true,
-                        onTap: () =>
-                            context.go(AppRoutes.visitFor(role, visits[i].id)),
-                      ),
+                  PatientHistoryLoader(
+                    history: history,
+                    builder: (context, h) =>
+                        _VisitsList(history: h, role: role),
+                  ),
+                  PatientHistoryLoader(
+                    history: history,
+                    builder: (context, h) => ReportsTab(
+                      patient: patient,
+                      visits: h.visits,
+                      canManage: true,
+                      cameraPicker: kIsWeb ? null : pickReportWithCamera,
+                      openUrl: openUrl,
                     ),
-                  ReportsTab(
-                    patient: patient,
-                    visits: visits,
-                    canManage: true,
-                    cameraPicker: kIsWeb ? null : pickReportWithCamera,
-                    openUrl: openUrl,
                   ),
                   const _ComingSoon(
                     icon: Icons.event_outlined,
@@ -439,6 +449,50 @@ class _Tabs extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _VisitsList extends StatelessWidget {
+  const _VisitsList({required this.history, required this.role});
+
+  final PatientHistoryViewModel history;
+  final UserRole role;
+
+  @override
+  Widget build(BuildContext context) {
+    final visits = history.visits;
+    if (history.loading && visits.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (visits.isEmpty) {
+      return EmptyState(
+        icon: history.error == null
+            ? Icons.receipt_long_outlined
+            : Icons.error_outline,
+        title: history.error == null ? 'No visits yet' : 'Could not load',
+        message: history.error,
+      );
+    }
+    final footer = history.hasMore || history.error != null;
+    return ListView.separated(
+      itemCount: visits.length + (footer ? 1 : 0),
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (_, i) {
+        if (i == visits.length) {
+          return LoadMoreRow(
+            keyName: 'visits-load-more',
+            loading: history.loadingMore,
+            error: history.error,
+            onPressed: history.loadMore,
+          );
+        }
+        return VisitRow(
+          visit: visits[i],
+          showDate: true,
+          onTap: () => context.go(AppRoutes.visitFor(role, visits[i].id)),
+        );
+      },
     );
   }
 }

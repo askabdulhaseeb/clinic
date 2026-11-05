@@ -14,6 +14,8 @@ import '../../../prescriptions/presentation/widgets/visit_history_list.dart';
 import '../../../reports/presentation/widgets/reports_tab.dart';
 import '../../../visits/domain/repositories/visits_repository.dart';
 import '../../../visits/presentation/receipt/receipt_pdf.dart';
+import '../../../visits/presentation/viewmodels/patient_history_vm.dart';
+import '../../../visits/presentation/widgets/patient_history_loader.dart';
 import '../../domain/repositories/patients_repository.dart';
 import '../viewmodels/patient_detail_vm.dart';
 import '../widgets/patient_header.dart';
@@ -27,14 +29,24 @@ class PatientHistoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
+    return MultiProvider(
       key: ValueKey(patientId),
-      create: (context) => PatientDetailViewModel(
-        repository: context.read<PatientsRepository>(),
-        visitsRepository: context.read<VisitsRepository?>(),
-        prescriptionsRepository: context.read<PrescriptionsRepository?>(),
-        patientId: patientId,
-      ),
+      providers: [
+        ChangeNotifierProvider(
+          create: (context) => PatientDetailViewModel(
+            repository: context.read<PatientsRepository>(),
+            patientId: patientId,
+          ),
+        ),
+        // 3 visits per page, read when the Visits tab is shown (§11).
+        ChangeNotifierProvider(
+          create: (context) => PatientHistoryViewModel(
+            visitsRepository: context.read<VisitsRepository>(),
+            prescriptionsRepository: context.read<PrescriptionsRepository>(),
+            patientId: patientId,
+          ),
+        ),
+      ],
       child: const PatientHistoryView(),
     );
   }
@@ -70,6 +82,7 @@ class PatientHistoryView extends StatelessWidget {
       return const Center(child: CircularProgressIndicator());
     }
     final scheme = Theme.of(context).colorScheme;
+    final history = context.watch<PatientHistoryViewModel>();
     return Scaffold(
       body: Column(
         children: [
@@ -105,9 +118,9 @@ class PatientHistoryView extends StatelessWidget {
                     labelColor: scheme.primary,
                     tabs: [
                       Tab(
-                        text: vm.visits.isEmpty
+                        text: patient.visitCount == 0
                             ? 'Visits'
-                            : 'Visits (${vm.visits.length})',
+                            : 'Visits (${patient.visitCount})',
                       ),
                       const Tab(text: 'Reports'),
                       const Tab(text: 'Operations'),
@@ -116,14 +129,25 @@ class PatientHistoryView extends StatelessWidget {
                   Expanded(
                     child: TabBarView(
                       children: [
-                        VisitHistoryList(
-                          visits: vm.visits,
-                          prescriptionFor: vm.prescriptionFor,
+                        PatientHistoryLoader(
+                          history: history,
+                          builder: (context, h) => VisitHistoryList(
+                            visits: h.visits,
+                            prescriptionFor: h.prescriptionFor,
+                            loading: h.loading,
+                            hasMore: h.hasMore,
+                            loadingMore: h.loadingMore,
+                            onLoadMore: h.loadMore,
+                            error: h.error,
+                          ),
                         ),
-                        ReportsTab(
-                          patientId: patient.id,
-                          visits: vm.visits,
-                          canManage: false,
+                        PatientHistoryLoader(
+                          history: history,
+                          builder: (context, h) => ReportsTab(
+                            patientId: patient.id,
+                            visits: h.visits,
+                            canManage: false,
+                          ),
                         ),
                         _PatientOperations(patientId: patient.id),
                       ],

@@ -27,13 +27,9 @@ void main() {
     visitStream = StreamController<Visit?>.broadcast();
     rxStream = StreamController<Prescription?>.broadcast();
     when(() => visits.watchVisit('v1')).thenAnswer((_) => visitStream.stream);
-    when(() => visits.watchPatientVisits(any()))
-        .thenAnswer((_) => Stream.value([waiting]));
     when(() => visits.setStatus(any(), any())).thenAnswer((_) async {});
     when(() => rxRepo.watchPrescription('v1'))
         .thenAnswer((_) => rxStream.stream);
-    when(() => rxRepo.watchPatientPrescriptions(any()))
-        .thenAnswer((_) => Stream.value(const []));
     when(
       () => rxRepo.save(
         any(),
@@ -234,23 +230,4 @@ void main() {
     expect(await vm.save(), isFalse);
     expect(vm.actionError, 'No permission');
   });
-
-  test(
-    'history lists the patient\'s other visits with their prescriptions',
-    () async {
-      final past = sampleVisit(
-        id: 'old',
-        date: '2026-10-01',
-        status: VisitStatus.completed,
-      );
-      when(() => visits.watchPatientVisits(any()))
-          .thenAnswer((_) => Stream.value([waiting, past]));
-      when(() => rxRepo.watchPatientPrescriptions(any()))
-          .thenAnswer((_) => Stream.value([samplePrescription(visit: past)]));
-      final vm = await loaded();
-      expect(vm.pastVisits.map((v) => v.id), ['old']);
-      expect(vm.prescriptionFor('old')?.diagnosis, 'Myopia');
-      expect(vm.prescriptionFor('v1'), isNull);
-    },
-  );
 }

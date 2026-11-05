@@ -15,12 +15,8 @@ void main() {
     final ops = MockOperationsRepository();
     final visit = sampleVisit(id: 'v1', status: VisitStatus.inProgress);
     when(() => visits.watchVisit('v1')).thenAnswer((_) => Stream.value(visit));
-    when(() => visits.watchPatientVisits(any()))
-        .thenAnswer((_) => Stream.value([visit]));
     when(() => rx.watchPrescription('v1'))
         .thenAnswer((_) => Stream.value(null));
-    when(() => rx.watchPatientPrescriptions(any()))
-        .thenAnswer((_) => Stream.value(const []));
     final fromThisVisit = sampleOperation(
       id: 'mine',
       visit: visit,

@@ -23,6 +23,8 @@ import '../../../settings/domain/entities/clinic_settings.dart';
 import '../../../settings/presentation/viewmodels/settings_controller.dart';
 import '../../../visits/domain/repositories/visits_repository.dart';
 import '../../../visits/presentation/receipt/receipt_printer.dart';
+import '../../../visits/presentation/viewmodels/patient_history_vm.dart';
+import '../../../visits/presentation/widgets/patient_history_loader.dart';
 import '../../domain/entities/prescription.dart';
 import '../../domain/repositories/prescriptions_repository.dart';
 import '../viewmodels/consultation_vm.dart';
@@ -267,40 +269,62 @@ class _ConsultationViewState extends State<ConsultationView> {
 
     final tabs = DefaultTabController(
       length: 4,
-      child: Column(
-        children: [
-          TabBar(
-            labelColor: scheme.primary,
-            isScrollable: compact,
-            tabs: const [
-              Tab(text: 'Prescription'),
-              Tab(text: 'History'),
-              Tab(text: 'Reports'),
-              Tab(text: 'Operation'),
-            ],
-          ),
-          Expanded(
-            child: TabBarView(
+      child: ChangeNotifierProvider(
+        key: ValueKey('history-${v.patientId}'),
+        create: (context) => PatientHistoryViewModel(
+          visitsRepository: context.read<VisitsRepository>(),
+          prescriptionsRepository: context.read<PrescriptionsRepository>(),
+          patientId: v.patientId,
+          excludeVisitId: v.id,
+        ),
+        child: Builder(
+          builder: (context) {
+            final history = context.watch<PatientHistoryViewModel>();
+            return Column(
               children: [
-                SingleChildScrollView(child: form),
-                VisitHistoryList(
-                  visits: vm.pastVisits,
-                  prescriptionFor: vm.prescriptionFor,
+                TabBar(
+                  labelColor: scheme.primary,
+                  isScrollable: compact,
+                  tabs: const [
+                    Tab(text: 'Prescription'),
+                    Tab(text: 'History'),
+                    Tab(text: 'Reports'),
+                    Tab(text: 'Operation'),
+                  ],
                 ),
-                ReportsTab(
-                  patientId: v.patientId,
-                  visits: [v, ...vm.pastVisits],
-                  canManage: false,
-                ),
-                OperationTab(
-                  visit: v,
-                  operation: vm.currentOperation,
-                  doctorId: vm.isOwn ? vm.doctorId : null,
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      SingleChildScrollView(child: form),
+                      PatientHistoryLoader(
+                        history: history,
+                        builder: (context, h) => VisitHistoryList(
+                          visits: h.visits,
+                          prescriptionFor: h.prescriptionFor,
+                          loading: h.loading,
+                          hasMore: h.hasMore,
+                          loadingMore: h.loadingMore,
+                          onLoadMore: h.loadMore,
+                          error: h.error,
+                        ),
+                      ),
+                      ReportsTab(
+                        patientId: v.patientId,
+                        visits: [v, ...history.visits],
+                        canManage: false,
+                      ),
+                      OperationTab(
+                        visit: v,
+                        operation: vm.currentOperation,
+                        doctorId: vm.isOwn ? vm.doctorId : null,
+                      ),
+                    ],
+                  ),
                 ),
               ],
-            ),
-          ),
-        ],
+            );
+          },
+        ),
       ),
     );
 

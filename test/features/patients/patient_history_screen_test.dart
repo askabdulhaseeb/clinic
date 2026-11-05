@@ -37,10 +37,16 @@ void main() {
         .thenAnswer((_) => Stream.value(khanFamily));
     when(() => patients.watchFamilyPatients(any()))
         .thenAnswer((_) => Stream.value([patientAli, patientSara]));
-    when(() => visits.watchPatientVisits(any()))
-        .thenAnswer((_) => Stream.value(const []));
-    when(() => rxRepo.watchPatientPrescriptions(any()))
-        .thenAnswer((_) => Stream.value(const []));
+    when(
+      () => visits.patientVisitsPage(
+        any(),
+        limit: any(named: 'limit'),
+        cursor: any(named: 'cursor'),
+      ),
+    ).thenAnswer(
+      (_) async => const VisitsPage(visits: [], cursor: null, hasMore: false),
+    );
+    when(() => rxRepo.getPrescriptions(any())).thenAnswer((_) async => []);
   });
   tearDown(() => auth.dispose());
 
@@ -91,6 +97,7 @@ void main() {
         date: '2026-11-04',
         token: 2,
         status: VisitStatus.completed,
+        hasPrescription: true,
       );
       final old = sampleVisit(
         id: 'v1',
@@ -100,12 +107,13 @@ void main() {
         visitType: homeoCheckup,
         status: VisitStatus.completed,
       );
-      when(() => visits.watchPatientVisits('pat-ali'))
-          .thenAnswer((_) => Stream.value([recent, old]));
-      when(() => rxRepo.watchPatientPrescriptions('pat-ali')).thenAnswer(
-        (_) => Stream.value([
-          samplePrescription(visit: recent, diagnosis: 'Myopia'),
-        ]),
+      when(() => visits.patientVisitsPage('pat-ali', limit: 3, cursor: null))
+          .thenAnswer(
+            (_) async =>
+                VisitsPage(visits: [recent, old], cursor: 'v1', hasMore: false),
+          );
+      when(() => rxRepo.getPrescriptions(['v2'])).thenAnswer(
+        (_) async => [samplePrescription(visit: recent, diagnosis: 'Myopia')],
       );
       await pump(
         tester,
@@ -113,6 +121,7 @@ void main() {
         location: AppRoutes.doctorPatientPattern,
       );
       expect(find.text('Ali Khan'), findsWidgets);
+      await tester.pumpAndSettle();
       expect(find.byKey(const Key('history-visit-v2')), findsOneWidget);
       expect(find.byKey(const Key('history-visit-v1')), findsOneWidget);
       expect(find.textContaining('Dr Imran'), findsOneWidget);

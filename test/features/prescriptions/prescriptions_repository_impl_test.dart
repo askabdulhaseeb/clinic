@@ -209,13 +209,14 @@ void main() {
     expect(saved?.createdAt, isNotNull);
   });
 
-  test('watchPatientPrescriptions lists a patient newest first', () async {
+  test('getPrescriptions returns the ones that exist, by visit id', () async {
     await db.doc('prescriptions/old').set({
       ...PrescriptionModel.toMap(rx(diagnosis: 'Old')),
       'date': '2026-10-01',
     });
     await repo.save(rx(diagnosis: 'New'), visit: visit);
-    final list = await repo.watchPatientPrescriptions(visit.patientId).first;
+    final list = await repo.getPrescriptions([visit.id, 'old', 'missing']);
     expect(list.map((p) => p.diagnosis), ['New', 'Old']);
+    expect(await repo.getPrescriptions(const []), isEmpty);
   });
 }

@@ -180,11 +180,14 @@ void main() {
     },
   );
 
-  test('watchPatientVisits is newest first and skips deleted', () async {
-    final a = await repo.createVisit(input());
-    now = now.add(const Duration(minutes: 1));
-    final b = await repo.createVisit(input());
-    await db.doc('visits/${a.id}').update({'deleted': true});
+  test('patientVisitsPage pages newest first, skips deleted, '
+      'and says when more remain', () async {
+    final ids = <String>[];
+    for (var i = 0; i < 5; i++) {
+      now = now.add(const Duration(minutes: 1));
+      ids.add((await repo.createVisit(input())).id);
+    }
+    await db.doc('visits/${ids[3]}').update({'deleted': true});
     await db.doc('patients/pat-sara').set({'name': 'Sara', 'visitCount': 0});
     await repo.createVisit(
       const VisitInput(
@@ -200,10 +203,19 @@ void main() {
       ),
     );
 
-    final list = await repo.watchPatientVisits('pat-ali').first;
-    expect(list.map((v) => v.id), [b.id]);
-    expect((await repo.watchVisit(b.id).first)?.tokenLabel, 'E-2');
+    final first = await repo.patientVisitsPage('pat-ali', limit: 3);
+    expect(first.visits.map((v) => v.id), [ids[4], ids[2], ids[1]]);
+    expect(first.hasMore, isTrue);
+    final second = await repo.patientVisitsPage(
+      'pat-ali',
+      limit: 3,
+      cursor: first.cursor,
+    );
+    expect(second.visits.map((v) => v.id), [ids[0]]);
+    expect(second.hasMore, isFalse);
+    expect((await repo.watchVisit(ids[1]).first)?.tokenLabel, 'E-2');
     expect(await repo.watchVisit('nope').first, isNull);
+    expect((await repo.patientVisitsPage('nobody')).visits, isEmpty);
   });
 
   test('setStatus stamps startedAt then completedAt', () async {

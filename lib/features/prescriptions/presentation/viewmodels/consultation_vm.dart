@@ -64,8 +64,6 @@ class ConsultationViewModel extends ChangeNotifier with CatalogData {
 
   StreamSubscription<Visit?>? _visitSub;
   StreamSubscription<Prescription?>? _rxSub;
-  StreamSubscription<List<Visit>>? _historySub;
-  StreamSubscription<List<Prescription>>? _historyRxSub;
   StreamSubscription<List<Operation>>? _operationsSub;
   List<Operation> _patientOperations = const [];
 
@@ -81,8 +79,6 @@ class ConsultationViewModel extends ChangeNotifier with CatalogData {
   bool _disposed = false;
   String? _loadError;
   String? _actionError;
-  List<Visit> _patientVisits = const [];
-  Map<String, Prescription> _patientRx = const {};
 
   // ----- form draft --------------------------------------------------------
   EyePrescription _eye = const EyePrescription();
@@ -179,13 +175,6 @@ class ConsultationViewModel extends ChangeNotifier with CatalogData {
     if (f != null) out.add(f);
     return out;
   }
-
-  // ----- history -----------------------------------------------------------
-  /// The patient's other visits, newest first.
-  List<Visit> get pastVisits =>
-      _patientVisits.where((v) => v.id != visitId).toList(growable: false);
-
-  Prescription? prescriptionFor(String id) => _patientRx[id];
 
   // ----- operations (Phase 5B) ----------------------------------------------
   /// The patient's scheduled operations, soonest first.
@@ -339,14 +328,6 @@ class ConsultationViewModel extends ChangeNotifier with CatalogData {
     _visit = v;
     _visitLoaded = true;
     if (v != null && first) {
-      _historySub = _visits.watchPatientVisits(v.patientId).listen((list) {
-        _patientVisits = list;
-        notifyListeners();
-      }, onError: (Object _) {});
-      _historyRxSub = _rx.watchPatientPrescriptions(v.patientId).listen((list) {
-        _patientRx = {for (final p in list) p.visitId: p};
-        notifyListeners();
-      }, onError: (Object _) {});
       _operationsSub = _operations?.watchPatientOperations(v.patientId).listen((
         list,
       ) {
@@ -400,8 +381,6 @@ class ConsultationViewModel extends ChangeNotifier with CatalogData {
     _disposed = true;
     _visitSub?.cancel();
     _rxSub?.cancel();
-    _historySub?.cancel();
-    _historyRxSub?.cancel();
     _operationsSub?.cancel();
     cancelCatalog();
     super.dispose();
