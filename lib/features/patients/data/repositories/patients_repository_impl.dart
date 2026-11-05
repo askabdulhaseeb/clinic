@@ -4,10 +4,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/errors/firestore_errors.dart';
 import '../../../../core/firebase/offline_write.dart';
+import '../../../../core/read_source.dart';
 import '../../../../core/utils/search_keys.dart';
 import '../../domain/entities/family.dart';
 import '../../domain/entities/patient.dart';
 import '../../domain/repositories/patients_repository.dart';
+import '../../domain/sync.dart';
 import '../../domain/temp_no.dart';
 import '../models/family_model.dart';
 import '../models/patient_model.dart';
@@ -102,62 +104,136 @@ class PatientsRepositoryImpl implements PatientsRepository {
       })
       .handleError((Object e) => throw mapFirestoreError(e));
 
-  @override
-  Stream<int> watchPatientCount() => _patients
-      .snapshots()
-      .map((s) => s.size)
-      .handleError((Object e) => throw mapFirestoreError(e));
+  CollectionReference<Map<String, dynamic>> _collection(SyncCollection c) =>
+      switch (c) {
+        SyncCollection.patients => _patients,
+        SyncCollection.families => _families,
+      };
+
+  /// Firestore read options for a [ReadSource]. The server default is
+  /// Firestore's own (server, cache when offline).
+  static GetOptions? _options(ReadSource source) => switch (source) {
+    ReadSource.cache => const GetOptions(source: Source.cache),
+    ReadSource.server => null,
+  };
+
+  static DateTime? _updatedAt(Map<String, dynamic> data) =>
+      (data['updatedAt'] as Timestamp?)?.toDate().toUtc();
 
   @override
-  Stream<int> watchFamilyCount() => _families
-      .snapshots()
-      .map((s) => s.size)
-      .handleError((Object e) => throw mapFirestoreError(e));
+  Future<DateTime?> latestChange(SyncCollection collection) => _guard(() async {
+    final snap = await _collection(collection)
+        .orderBy('updatedAt', descending: true)
+        .limit(1)
+        .get(const GetOptions(source: Source.server));
+    if (snap.docs.isEmpty) return null;
+    return _updatedAt(snap.docs.first.data());
+  });
 
   @override
-  Future<Family?> findFamilyByPhone(String phone) => _guard(() async {
+  Future<SyncResult> pullChanges(
+    SyncCollection collection, {
+    required DateTime after,
+    int pageSize = 500,
+  }) => _guard(() async {
+    // Document id as the explicit tie-break so a page boundary inside a
+    // batch (many documents sharing one updatedAt) never skips a document.
+    final base = _collection(collection)
+        .where('updatedAt', isGreaterThanOrEqualTo: Timestamp.fromDate(after))
+        .orderBy('updatedAt')
+        .orderBy(FieldPath.documentId);
+    var count = 0;
+    DateTime? newest;
+    QueryDocumentSnapshot<Map<String, dynamic>>? last;
+    while (true) {
+      final q = (last == null ? base : base.startAfterDocument(last)).limit(
+        pageSize,
+      );
+      final snap = await q.get(const GetOptions(source: Source.server));
+      count += snap.docs.length;
+      if (snap.docs.isNotEmpty) {
+        last = snap.docs.last;
+        final at = _updatedAt(last.data());
+        if (at != null && (newest == null || at.isAfter(newest))) newest = at;
+      }
+      if (snap.docs.length < pageSize) break;
+    }
+    return SyncResult(count: count, newest: newest);
+  });
+
+  @override
+  Future<Family?> findFamilyByPhone(
+    String phone, {
+    ReadSource source = ReadSource.server,
+  }) => _guard(() async {
     final snap = await _families
         .where('phone', isEqualTo: phone)
         .limit(1)
-        .get();
+        .get(_options(source));
     if (snap.docs.isEmpty) return null;
     final d = snap.docs.first;
     return FamilyModel.fromMap(d.id, d.data());
   });
 
   @override
-  Future<List<Family>> getFamilies(Iterable<String> ids) => _guard(() async {
-    final docs = await Future.wait(ids.map((id) => _families.doc(id).get()));
+  Future<List<Family>> getFamilies(
+    Iterable<String> ids, {
+    ReadSource source = ReadSource.server,
+  }) => _guard(() async {
+    final docs = await Future.wait(
+      ids.map((id) async {
+        try {
+          return await _families.doc(id).get(_options(source));
+        } on FirebaseException catch (e) {
+          // A cache read of a document this device has never seen.
+          if (source == ReadSource.cache && e.code == 'unavailable') {
+            return null;
+          }
+          rethrow;
+        }
+      }),
+    );
     return [
       for (final d in docs)
-        if (d.data() case final data?) FamilyModel.fromMap(d.id, data),
+        if (d?.data() case final data?) FamilyModel.fromMap(d!.id, data),
     ];
   });
 
   @override
-  Future<List<Patient>> searchByPhone(String phone) => _guard(() async {
-    final snap = await _patients.where('phones', arrayContains: phone).get();
+  Future<List<Patient>> searchByPhone(
+    String phone, {
+    ReadSource source = ReadSource.server,
+  }) => _guard(() async {
+    final snap = await _patients
+        .where('phones', arrayContains: phone)
+        .get(_options(source));
     return _living(snap);
   });
 
   @override
-  Future<List<Patient>> searchByName(String text, {int limit = 50}) =>
-      _guard(() async {
-        final key = SearchKeys.queryKey(text);
-        if (key.isEmpty) return const [];
-        final snap = await _patients
-            .where('searchKeys', arrayContains: key)
-            .limit(limit)
-            .get();
-        return _living(snap);
-      });
+  Future<List<Patient>> searchByName(
+    String text, {
+    int limit = 50,
+    ReadSource source = ReadSource.server,
+  }) => _guard(() async {
+    final key = SearchKeys.queryKey(text);
+    if (key.isEmpty) return const [];
+    final snap = await _patients
+        .where('searchKeys', arrayContains: key)
+        .limit(limit)
+        .get(_options(source));
+    return _living(snap);
+  });
 
   @override
-  Future<Patient?> findByPatientNo(String patientNo) => _guard(() async {
+  Future<Patient?> findByPatientNo(
+    String patientNo, {
+    ReadSource source = ReadSource.server,
+  }) => _guard(() async {
     final snap = await _patients
         .where('patientNo', isEqualTo: patientNo)
         .limit(1)
-        .get();
+        .get(_options(source));
     if (snap.docs.isEmpty) return null;
     final d = snap.docs.first;
     final p = PatientModel.fromMap(d.id, d.data());
@@ -165,11 +241,14 @@ class PatientsRepositoryImpl implements PatientsRepository {
   });
 
   @override
-  Future<Patient?> findByTempNo(String tempNo) => _guard(() async {
+  Future<Patient?> findByTempNo(
+    String tempNo, {
+    ReadSource source = ReadSource.server,
+  }) => _guard(() async {
     final snap = await _patients
         .where('tempNo', isEqualTo: tempNo)
         .limit(1)
-        .get();
+        .get(_options(source));
     if (snap.docs.isEmpty) return null;
     final d = snap.docs.first;
     final p = PatientModel.fromMap(d.id, d.data());

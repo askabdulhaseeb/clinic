@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:ramzan/core/errors/app_exception.dart';
+import 'package:ramzan/core/read_source.dart';
 import 'package:ramzan/features/patients/domain/entities/patient.dart';
 import 'package:ramzan/features/patients/domain/repositories/patients_repository.dart';
-import 'package:ramzan/features/patients/presentation/viewmodels/patient_cache_controller.dart';
 import 'package:ramzan/features/patients/presentation/viewmodels/patient_detail_vm.dart';
 import 'package:ramzan/features/patients/presentation/viewmodels/patient_form_vm.dart';
 import 'package:ramzan/features/patients/presentation/viewmodels/patient_search_vm.dart';
@@ -20,16 +20,17 @@ void main() {
 
   setUp(() {
     repo = MockPatientsRepository();
-    when(() => repo.getFamilies(any())).thenAnswer((inv) async {
-      final ids = inv.positionalArguments.first as Iterable<String>;
-      return [
-        for (final id in ids)
-          if (id == khanFamily.id)
-            khanFamily
-          else if (id == ahmedFamily.id)
-            ahmedFamily,
-      ];
-    });
+    when(() => repo.getFamilies(any(), source: any(named: 'source')))
+        .thenAnswer((inv) async {
+          final ids = inv.positionalArguments.first as Iterable<String>;
+          return [
+            for (final id in ids)
+              if (id == khanFamily.id)
+                khanFamily
+              else if (id == ahmedFamily.id)
+                ahmedFamily,
+          ];
+        });
   });
 
   group('PatientSearchViewModel', () {
@@ -49,10 +50,13 @@ void main() {
     });
 
     test('phone search groups by family and includes empty families', () async {
-      when(() => repo.searchByPhone('03001234567'))
-          .thenAnswer((_) async => [patientAli, patientSara]);
-      when(() => repo.findFamilyByPhone('03001234567'))
-          .thenAnswer((_) async => khanFamily);
+      when(
+        () => repo.searchByPhone('03001234567', source: any(named: 'source')),
+      ).thenAnswer((_) async => [patientAli, patientSara]);
+      when(
+        () =>
+            repo.findFamilyByPhone('03001234567', source: any(named: 'source')),
+      ).thenAnswer((_) async => khanFamily);
       final vm = PatientSearchViewModel(repository: repo);
       await vm.search('0300-1234567');
       expect(vm.mode, SearchMode.phone);
@@ -62,23 +66,31 @@ void main() {
       expect(vm.loading, isFalse);
       expect(vm.error, isNull);
 
-      when(() => repo.searchByPhone('03219999999')).thenAnswer((_) async => []);
-      when(() => repo.findFamilyByPhone('03219999999'))
-          .thenAnswer((_) async => ahmedFamily.copyWith(patientCount: 0));
+      when(
+        () => repo.searchByPhone('03219999999', source: any(named: 'source')),
+      ).thenAnswer((_) async => []);
+      when(
+        () =>
+            repo.findFamilyByPhone('03219999999', source: any(named: 'source')),
+      ).thenAnswer((_) async => ahmedFamily.copyWith(patientCount: 0));
       await vm.search('03219999999');
       expect(vm.groups.single.family.headName, 'Ahmed');
       expect(vm.groups.single.patients, isEmpty);
 
-      when(() => repo.searchByPhone('03000000000')).thenAnswer((_) async => []);
-      when(() => repo.findFamilyByPhone('03000000000'))
-          .thenAnswer((_) async => null);
+      when(
+        () => repo.searchByPhone('03000000000', source: any(named: 'source')),
+      ).thenAnswer((_) async => []);
+      when(
+        () =>
+            repo.findFamilyByPhone('03000000000', source: any(named: 'source')),
+      ).thenAnswer((_) async => null);
       await vm.search('03000000000');
       expect(vm.groups, isEmpty);
       expect(vm.hasSearched, isTrue);
     });
 
     test('name search groups patients of several families', () async {
-      when(() => repo.searchByName('ali'))
+      when(() => repo.searchByName('ali', source: any(named: 'source')))
           .thenAnswer((_) async => [patientAli, patientAlina]);
       final vm = PatientSearchViewModel(repository: repo);
       await vm.search('Ali');
@@ -88,9 +100,9 @@ void main() {
     });
 
     test('patient number search, temp numbers included', () async {
-      when(() => repo.findByPatientNo('26-00001'))
+      when(() => repo.findByPatientNo('26-00001', source: any(named: 'source')))
           .thenAnswer((_) async => patientAli);
-      when(() => repo.findByTempNo('T-BBBBB'))
+      when(() => repo.findByTempNo('T-BBBBB', source: any(named: 'source')))
           .thenAnswer((_) async => patientSara);
       final vm = PatientSearchViewModel(repository: repo);
       await vm.search('26-00001');
@@ -101,8 +113,9 @@ void main() {
 
     test('a newer search wins over a slower older one', () async {
       final slow = Completer<List<Patient>>();
-      when(() => repo.searchByName('ali')).thenAnswer((_) => slow.future);
-      when(() => repo.searchByName('sara'))
+      when(() => repo.searchByName('ali', source: any(named: 'source')))
+          .thenAnswer((_) => slow.future);
+      when(() => repo.searchByName('sara', source: any(named: 'source')))
           .thenAnswer((_) async => [patientSara]);
       final vm = PatientSearchViewModel(repository: repo);
       final first = vm.search('ali');
@@ -115,9 +128,11 @@ void main() {
     });
 
     test('too short clears results without a query; errors surface', () async {
-      when(() => repo.searchByName('ali')).thenAnswer(
-        (_) async => throw const AppException('Offline', code: 'unavailable'),
-      );
+      when(() => repo.searchByName('ali', source: any(named: 'source')))
+          .thenAnswer(
+            (_) async =>
+                throw const AppException('Offline', code: 'unavailable'),
+          );
       final vm = PatientSearchViewModel(repository: repo);
       await vm.search('ali');
       expect(vm.error, 'Offline');
@@ -125,12 +140,107 @@ void main() {
       expect(vm.mode, SearchMode.tooShort);
       expect(vm.groups, isEmpty);
       expect(vm.error, isNull);
-      verifyNever(() => repo.searchByName('a'));
+      verifyNever(() => repo.searchByName('a', source: any(named: 'source')));
+    });
+
+    test('a cache hit never asks the server', () async {
+      when(() => repo.searchByName('ali', source: ReadSource.cache))
+          .thenAnswer((_) async => [patientAli]);
+      final vm = PatientSearchViewModel(repository: repo);
+      await vm.search('Ali');
+      expect(vm.groups.single.patients, [patientAli]);
+      expect(vm.origin, ResultOrigin.cache);
+      verifyNever(() => repo.searchByName('ali', source: ReadSource.server));
+      verify(() => repo.getFamilies(any(), source: ReadSource.cache)).called(1);
+      verifyNever(() => repo.getFamilies(any(), source: ReadSource.server));
+    });
+
+    test('a cache miss goes to the server, families too', () async {
+      when(() => repo.searchByName('ali', source: ReadSource.cache))
+          .thenAnswer((_) async => []);
+      when(() => repo.searchByName('ali', source: ReadSource.server))
+          .thenAnswer((_) async => [patientAli, patientAlina]);
+      when(() => repo.getFamilies(any(), source: ReadSource.cache))
+          .thenAnswer((_) async => [khanFamily]);
+      when(() => repo.getFamilies(any(), source: ReadSource.server))
+          .thenAnswer((inv) async {
+            final ids = inv.positionalArguments.first as Iterable<String>;
+            expect(ids, [ahmedFamily.id]);
+            return [ahmedFamily];
+          });
+      final vm = PatientSearchViewModel(repository: repo);
+      await vm.search('Ali');
+      expect(vm.groups.map((g) => g.family.headName), ['Khan', 'Ahmed']);
+      expect(vm.origin, ResultOrigin.server);
+    });
+
+    test('phone and number searches are local-first too', () async {
+      when(() => repo.searchByPhone('03001234567', source: ReadSource.cache))
+          .thenAnswer((_) async => []);
+      when(() => repo.searchByPhone('03001234567', source: ReadSource.server))
+          .thenAnswer((_) async => []);
+      when(
+        () => repo.findFamilyByPhone('03001234567', source: ReadSource.cache),
+      ).thenAnswer((_) async => null);
+      when(
+        () => repo.findFamilyByPhone('03001234567', source: ReadSource.server),
+      ).thenAnswer((_) async => khanFamily);
+      final vm = PatientSearchViewModel(repository: repo);
+      await vm.search('03001234567');
+      expect(vm.groups.single.family, khanFamily);
+      expect(vm.origin, ResultOrigin.server);
+
+      when(() => repo.findByPatientNo('26-00001', source: ReadSource.cache))
+          .thenAnswer((_) async => patientAli);
+      await vm.search('26-00001');
+      expect(vm.groups.single.patients, [patientAli]);
+      expect(vm.origin, ResultOrigin.cache);
+      verifyNever(
+        () => repo.findByPatientNo('26-00001', source: ReadSource.server),
+      );
+    });
+
+    test('a phone search re-asks the server when the cached family is '
+        'incomplete, and trusts a complete one', () async {
+      // khanFamily.patientCount is 2; the cache knows only Sara.
+      when(() => repo.searchByPhone('03001234567', source: ReadSource.cache))
+          .thenAnswer((_) async => [patientSara]);
+      when(() => repo.searchByPhone('03001234567', source: ReadSource.server))
+          .thenAnswer((_) async => [patientAli, patientSara]);
+      final vm = PatientSearchViewModel(repository: repo);
+      await vm.search('03001234567');
+      expect(vm.groups.single.patients, [patientAli, patientSara]);
+      expect(vm.origin, ResultOrigin.server);
+
+      when(() => repo.searchByPhone('03001234567', source: ReadSource.cache))
+          .thenAnswer((_) async => [patientAli, patientSara]);
+      clearInteractions(repo);
+      await vm.search('03001234567');
+      expect(vm.origin, ResultOrigin.cache);
+      verifyNever(
+        () => repo.searchByPhone('03001234567', source: ReadSource.server),
+      );
+    });
+
+    test('searchOnline re-runs the current query on the server', () async {
+      when(() => repo.searchByName('ali', source: ReadSource.cache))
+          .thenAnswer((_) async => [patientAli]);
+      when(() => repo.searchByName('ali', source: ReadSource.server))
+          .thenAnswer((_) async => [patientAli, patientAlina]);
+      final vm = PatientSearchViewModel(repository: repo);
+      await vm.search('Ali');
+      expect(vm.groups, hasLength(1));
+      await vm.searchOnline();
+      expect(vm.groups, hasLength(2));
+      expect(vm.origin, ResultOrigin.server);
+      expect(vm.hasSearched, isTrue);
     });
 
     test('lookupFamily normalises the phone', () async {
-      when(() => repo.findFamilyByPhone('03001234567'))
-          .thenAnswer((_) async => khanFamily);
+      when(
+        () =>
+            repo.findFamilyByPhone('03001234567', source: any(named: 'source')),
+      ).thenAnswer((_) async => khanFamily);
       final vm = PatientSearchViewModel(repository: repo);
       final r = await vm.lookupFamily('+92 300 1234567');
       expect(r.phone, '03001234567');
@@ -413,8 +523,10 @@ void main() {
     });
 
     test('findFamily and moveTo', () async {
-      when(() => repo.findFamilyByPhone('03211111111'))
-          .thenAnswer((_) async => ahmedFamily);
+      when(
+        () =>
+            repo.findFamilyByPhone('03211111111', source: any(named: 'source')),
+      ).thenAnswer((_) async => ahmedFamily);
       when(
         () => repo.movePatient(
           patientId: any(named: 'patientId'),
@@ -474,40 +586,6 @@ void main() {
             repo.updateFamily('fam-khan', headName: 'Khan Sahib', address: ''),
       ).called(1);
       expect(vm.busy, isFalse);
-    });
-  });
-
-  group('PatientCacheController', () {
-    test('listens while a reception user is signed in', () async {
-      final patients = StreamController<int>.broadcast();
-      final families = StreamController<int>.broadcast();
-      when(() => repo.watchPatientCount()).thenAnswer((_) => patients.stream);
-      when(() => repo.watchFamilyCount()).thenAnswer((_) => families.stream);
-      final auth = FakeAuthRepository();
-      final session = await signedInSession(auth, receptionUser);
-      final cache = PatientCacheController(repository: repo, session: session);
-      expect(cache.listening, isTrue);
-      patients.add(12);
-      families.add(5);
-      await pumpEventQueue();
-      expect(cache.patientCount, 12);
-      expect(cache.familyCount, 5);
-      await session.signOut();
-      await pumpEventQueue();
-      expect(cache.listening, isFalse);
-      expect(cache.patientCount, isNull);
-      cache.dispose();
-      session.dispose();
-    });
-
-    test('doctor-only sessions do not cache patients', () async {
-      final auth = FakeAuthRepository();
-      final session = await signedInSession(auth, doctorUser);
-      final cache = PatientCacheController(repository: repo, session: session);
-      expect(cache.listening, isFalse);
-      verifyNever(() => repo.watchPatientCount());
-      cache.dispose();
-      session.dispose();
     });
   });
 }

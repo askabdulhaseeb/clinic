@@ -1,5 +1,5 @@
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
-import { getFirestore, Timestamp, type Firestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore, Timestamp, type Firestore } from "firebase-admin/firestore";
 
 // Phase 3: assignPatientNo (FIREBASE_ARCHITECTURE.md §5, §4.9).
 // The client writes `patientNo: null` plus a `tempNo`; this trigger hands
@@ -44,7 +44,8 @@ export async function assignPatientNoCore(
     const patientNo = formatPatientNo(yy, next);
 
     tx.set(counterRef, { value: next }, { merge: true });
-    tx.update(patientRef, { patientNo });
+    // updatedAt moves so the reception delta sync (§9) pulls the number.
+    tx.update(patientRef, { patientNo, updatedAt: FieldValue.serverTimestamp() });
     return patientNo;
   });
 }

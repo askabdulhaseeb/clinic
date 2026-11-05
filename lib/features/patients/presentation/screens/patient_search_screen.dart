@@ -207,13 +207,56 @@ class _Body extends StatelessWidget {
                   ),
           );
         }
+        // Cached matches cost nothing; the server is one tap away when the
+        // patient is not among them (FIREBASE_ARCHITECTURE §9).
+        final fromCache = vm.origin == ResultOrigin.cache;
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-          itemCount: vm.groups.length,
-          itemBuilder: (context, i) =>
-              FamilyGroupCard(group: vm.groups[i], role: role, today: today),
+          itemCount: vm.groups.length + (fromCache ? 1 : 0),
+          itemBuilder: (context, i) {
+            if (fromCache && i == vm.groups.length) {
+              return _SearchOnlineRow(onPressed: vm.searchOnline);
+            }
+            return FamilyGroupCard(
+              group: vm.groups[i],
+              role: role,
+              today: today,
+            );
+          },
         );
     }
+  }
+}
+
+/// Footer under results that came from this device's cache.
+class _SearchOnlineRow extends StatelessWidget {
+  const _SearchOnlineRow({required this.onPressed});
+
+  final Future<void> Function() onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Flexible(
+            child: Text(
+              'Matches saved on this device.',
+              style: TextStyle(color: scheme.outline),
+            ),
+          ),
+          TextButton.icon(
+            key: const Key('search-online'),
+            onPressed: () => unawaited(onPressed()),
+            icon: const Icon(Icons.cloud_download_outlined, size: 18),
+            label: const Text('Not here? Search online'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

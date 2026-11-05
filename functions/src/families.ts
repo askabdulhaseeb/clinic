@@ -1,5 +1,5 @@
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore, type Firestore } from "firebase-admin/firestore";
 
 // Phase 3: checkDuplicateFamilyPhone (FIREBASE_ARCHITECTURE.md §5, §4.7).
 // The client refuses a used phone when online; two families created
@@ -21,7 +21,8 @@ export async function checkDuplicateFamilyPhoneCore(
 
   const batch = db.batch();
   for (const doc of same.docs) {
-    batch.update(doc.ref, { duplicatePhone: true });
+    // updatedAt moves so the reception delta sync (§9) pulls the flag.
+    batch.update(doc.ref, { duplicatePhone: true, updatedAt: FieldValue.serverTimestamp() });
   }
   await batch.commit();
   return same.docs.map((d) => d.id);

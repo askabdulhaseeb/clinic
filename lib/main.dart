@@ -22,7 +22,7 @@ import 'features/operations/data/repositories/operations_repository_impl.dart';
 import 'features/operations/domain/repositories/operations_repository.dart';
 import 'features/patients/data/repositories/patients_repository_impl.dart';
 import 'features/patients/domain/repositories/patients_repository.dart';
-import 'features/patients/presentation/viewmodels/patient_cache_controller.dart';
+import 'features/patients/presentation/viewmodels/patient_sync_controller.dart';
 import 'features/prescriptions/data/repositories/prescriptions_repository_impl.dart';
 import 'features/prescriptions/domain/repositories/prescriptions_repository.dart';
 import 'features/reports/data/repositories/reports_repository_impl.dart';
@@ -109,13 +109,14 @@ Future<void> main() async {
             session: context.read<SessionController>(),
           ),
         ),
-        // Keeps families and patients cached for offline search while a
+        // Delta-syncs families and patients into the local cache while a
         // reception user is signed in (FIREBASE_ARCHITECTURE §9).
-        ChangeNotifierProvider<PatientCacheController>(
+        ChangeNotifierProvider<PatientSyncController>(
           lazy: false,
-          create: (context) => PatientCacheController(
+          create: (context) => PatientSyncController(
             repository: context.read<PatientsRepository>(),
             session: context.read<SessionController>(),
+            store: const SharedPrefsKeyValueStore(),
           ),
         ),
         // One listener on today's visits for reception and admin sessions:

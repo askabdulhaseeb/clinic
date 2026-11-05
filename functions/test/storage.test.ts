@@ -40,16 +40,22 @@ const asReception = () => env.authenticatedContext("alice-uid", receptionToken).
 const asAdmin = () => env.authenticatedContext("admin-uid", adminToken).storage();
 const asDoctor = () => env.authenticatedContext("doctor-uid", doctorToken).storage();
 const asAnon = () => env.unauthenticatedContext().storage();
+// UploadTask is thenable but not a Promise; the assert helpers want a Promise.
+const put = (
+  ref: ReturnType<ReturnType<typeof asAnon>["ref"]>,
+  data: Uint8Array,
+  meta: { contentType: string }
+) => Promise.resolve(ref.put(data, meta));
 
 describe("patient report files", () => {
   const file = "patients/p1/reports/r1.pdf";
   it("reception and admin upload PDF, JPEG and PNG under the patient's folder", async () => {
-    await assertSucceeds(asReception().ref(file).put(pdf, { contentType: "application/pdf" }));
+    await assertSucceeds(put(asReception().ref(file), pdf, { contentType: "application/pdf" }));
     await assertSucceeds(
-      asAdmin().ref("patients/p1/reports/r2.jpg").put(pdf, { contentType: "image/jpeg" })
+      put(asAdmin().ref("patients/p1/reports/r2.jpg"), pdf, { contentType: "image/jpeg" })
     );
     await assertSucceeds(
-      asReception().ref("patients/p1/reports/r3.png").put(pdf, { contentType: "image/png" })
+      put(asReception().ref("patients/p1/reports/r3.png"), pdf, { contentType: "image/png" })
     );
   });
   it("any signed-in user reads; anonymous cannot", async () => {
@@ -60,12 +66,12 @@ describe("patient report files", () => {
     await assertFails(asAnon().ref(file).getDownloadURL());
   });
   it("doctor, anonymous, other types and oversize files are refused", async () => {
-    await assertFails(asDoctor().ref(file).put(pdf, { contentType: "application/pdf" }));
-    await assertFails(asAnon().ref(file).put(pdf, { contentType: "application/pdf" }));
-    await assertFails(asReception().ref("patients/p1/reports/r1.gif").put(pdf, { contentType: "image/gif" }));
-    await assertFails(asReception().ref("patients/p1/reports/r1.txt").put(pdf, { contentType: "text/plain" }));
+    await assertFails(put(asDoctor().ref(file), pdf, { contentType: "application/pdf" }));
+    await assertFails(put(asAnon().ref(file), pdf, { contentType: "application/pdf" }));
+    await assertFails(put(asReception().ref("patients/p1/reports/r1.gif"), pdf, { contentType: "image/gif" }));
+    await assertFails(put(asReception().ref("patients/p1/reports/r1.txt"), pdf, { contentType: "text/plain" }));
     await assertFails(
-      asReception().ref(file).put(new Uint8Array(10 * 1024 * 1024 + 1), { contentType: "application/pdf" })
+      put(asReception().ref(file), new Uint8Array(10 * 1024 * 1024 + 1), { contentType: "application/pdf" })
     );
   });
   it("files are never deleted from the client and other paths stay closed", async () => {
@@ -73,16 +79,16 @@ describe("patient report files", () => {
       await ctx.storage().ref(file).put(pdf, { contentType: "application/pdf" });
     });
     await assertFails(asAdmin().ref(file).delete());
-    await assertFails(asReception().ref("patients/p1/other/x.pdf").put(pdf, { contentType: "application/pdf" }));
-    await assertFails(asAdmin().ref("misc/x.pdf").put(pdf, { contentType: "application/pdf" }));
+    await assertFails(put(asReception().ref("patients/p1/other/x.pdf"), pdf, { contentType: "application/pdf" }));
+    await assertFails(put(asAdmin().ref("misc/x.pdf"), pdf, { contentType: "application/pdf" }));
   });
 });
 
 describe("clinic logo", () => {
   it("admin writes an image, reception reads, reception cannot write", async () => {
-    await assertSucceeds(asAdmin().ref("clinic/logo.png").put(pdf, { contentType: "image/png" }));
+    await assertSucceeds(put(asAdmin().ref("clinic/logo.png"), pdf, { contentType: "image/png" }));
     await assertSucceeds(asReception().ref("clinic/logo.png").getDownloadURL());
-    await assertFails(asReception().ref("clinic/logo.png").put(pdf, { contentType: "image/png" }));
-    await assertFails(asAdmin().ref("clinic/logo.png").put(pdf, { contentType: "application/pdf" }));
+    await assertFails(put(asReception().ref("clinic/logo.png"), pdf, { contentType: "image/png" }));
+    await assertFails(put(asAdmin().ref("clinic/logo.png"), pdf, { contentType: "application/pdf" }));
   });
 });

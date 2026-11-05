@@ -64,6 +64,12 @@ describe("assignPatientNo", () => {
     expect((await db.doc("counters/patients_26").get()).get("value")).toBe(2);
   });
 
+  it("stamps updatedAt so reception devices pull the number (delta sync)", async () => {
+    await seedPatient("p1");
+    await assignPatientNoCore(db, "p1");
+    expect((await db.doc("patients/p1").get()).get("updatedAt")).toBeInstanceOf(Timestamp);
+  });
+
   it("uses a counter per year, from the Karachi date of createdAtLocal", async () => {
     // 23:30 UTC on 31 Dec 2025 is already 2026 in Karachi.
     await seedPatient("late", {
@@ -129,6 +135,9 @@ describe("checkDuplicateFamilyPhone", () => {
     expect((await db.doc("families/f1").get()).get("duplicatePhone")).toBe(true);
     expect((await db.doc("families/f2").get()).get("duplicatePhone")).toBe(true);
     expect((await db.doc("families/f3").get()).get("duplicatePhone")).toBe(false);
+    // Flagged families are re-stamped so the delta sync picks them up.
+    expect((await db.doc("families/f1").get()).get("updatedAt")).toBeInstanceOf(Timestamp);
+    expect((await db.doc("families/f3").get()).get("updatedAt")).toBeUndefined();
   });
 
   it("ignores a family that no longer exists", async () => {

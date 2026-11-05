@@ -38,8 +38,17 @@ Future<void> bootstrapFirebase() async {
         .useFunctionsEmulator(host, 5001);
     await FirebaseStorage.instance.useStorageEmulator(host, 9199);
   }
+  // Unlimited cache: the reception device keeps every patient it has seen.
+  // Multi-tab so a second Chrome tab shares the cache instead of falling
+  // back to memory and re-reading everything (FIREBASE_ARCHITECTURE §9).
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    webPersistentTabManager: kIsWeb ? WebPersistentMultipleTabManager() : null,
   );
+  // Local-first search queries the cache by `searchKeys` and `phones`;
+  // client-side indexes keep those scans fast as the cache grows.
+  await FirebaseFirestore.instance
+      .persistentCacheIndexManager()
+      ?.enableIndexAutoCreation();
 }

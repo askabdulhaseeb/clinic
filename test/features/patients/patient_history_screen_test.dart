@@ -16,7 +16,10 @@ import 'package:ramzan/features/visits/domain/repositories/visits_repository.dar
 import '../../helpers/fakes.dart';
 
 void main() {
-  setUpAll(registerPrescriptionFallbacks);
+  setUpAll(() {
+    registerPrescriptionFallbacks();
+    registerPatientFallbacks();
+  });
 
   late FakeAuthRepository auth;
   late MockPatientsRepository patients;
@@ -141,9 +144,9 @@ void main() {
   testWidgets('doctor search is read-only and opens the history page', (
     tester,
   ) async {
-    when(() => patients.searchByPhone(any()))
+    when(() => patients.searchByPhone(any(), source: any(named: 'source')))
         .thenAnswer((_) async => [patientAli]);
-    when(() => patients.getFamilies(any()))
+    when(() => patients.getFamilies(any(), source: any(named: 'source')))
         .thenAnswer((_) async => [khanFamily]);
     await pump(
       tester,

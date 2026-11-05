@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:provider/provider.dart';
+import 'package:ramzan/core/read_source.dart';
 import 'package:ramzan/core/routing/app_routes.dart';
 import 'package:ramzan/features/auth/domain/entities/user_role.dart';
 import 'package:ramzan/features/patients/domain/entities/patient.dart';
@@ -36,16 +37,17 @@ void main() {
         .thenAnswer((_) => Stream.value(const []));
     when(() => visits.watchPatientVisits(any()))
         .thenAnswer((_) => Stream.value(const []));
-    when(() => repo.getFamilies(any())).thenAnswer((inv) async {
-      final ids = inv.positionalArguments.first as Iterable<String>;
-      return [
-        for (final id in ids)
-          if (id == khanFamily.id)
-            khanFamily
-          else if (id == ahmedFamily.id)
-            ahmedFamily,
-      ];
-    });
+    when(() => repo.getFamilies(any(), source: any(named: 'source')))
+        .thenAnswer((inv) async {
+          final ids = inv.positionalArguments.first as Iterable<String>;
+          return [
+            for (final id in ids)
+              if (id == khanFamily.id)
+                khanFamily
+              else if (id == ahmedFamily.id)
+                ahmedFamily,
+          ];
+        });
   });
   tearDown(() => auth.dispose());
 
@@ -96,8 +98,9 @@ void main() {
     testWidgets('phone search shows the family group with its patients', (
       tester,
     ) async {
-      when(() => repo.searchByPhone('03001234567'))
-          .thenAnswer((_) async => [patientAli, patientSara]);
+      when(
+        () => repo.searchByPhone('03001234567', source: any(named: 'source')),
+      ).thenAnswer((_) async => [patientAli, patientSara]);
       await pump(
         tester,
         ChangeNotifierProvider(
@@ -128,10 +131,40 @@ void main() {
       expect(find.text('went /reception/patients/pat-sara'), findsOneWidget);
     });
 
+    testWidgets('cached matches offer Search online, which asks the server', (
+      tester,
+    ) async {
+      when(() => repo.searchByName('ali', source: ReadSource.cache))
+          .thenAnswer((_) async => [patientAli]);
+      when(() => repo.searchByName('ali', source: ReadSource.server))
+          .thenAnswer((_) async => [patientAli, patientAlina]);
+      await pump(
+        tester,
+        ChangeNotifierProvider(
+          create: (_) => PatientSearchViewModel(repository: repo),
+          child: const PatientSearchView(role: UserRole.reception),
+        ),
+      );
+      await tester.enterText(find.byKey(const Key('patient-search')), 'Ali');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(find.text('Ali Khan'), findsOneWidget);
+      expect(find.text('Alina Ahmed'), findsNothing);
+      await tester.tap(find.byKey(const Key('search-online')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Alina Ahmed'), findsOneWidget);
+      expect(find.byKey(const Key('search-online')), findsNothing);
+    });
+
     testWidgets('no result offers to register the typed phone', (tester) async {
-      when(() => repo.searchByPhone('03009999999')).thenAnswer((_) async => []);
-      when(() => repo.findFamilyByPhone('03009999999'))
-          .thenAnswer((_) async => null);
+      when(
+        () => repo.searchByPhone('03009999999', source: any(named: 'source')),
+      ).thenAnswer((_) async => []);
+      when(
+        () =>
+            repo.findFamilyByPhone('03009999999', source: any(named: 'source')),
+      ).thenAnswer((_) async => null);
       await pump(
         tester,
         ChangeNotifierProvider(
@@ -157,8 +190,10 @@ void main() {
     testWidgets('New patient asks for the phone and routes by family', (
       tester,
     ) async {
-      when(() => repo.findFamilyByPhone('03001234567'))
-          .thenAnswer((_) async => khanFamily);
+      when(
+        () =>
+            repo.findFamilyByPhone('03001234567', source: any(named: 'source')),
+      ).thenAnswer((_) async => khanFamily);
       await pump(
         tester,
         ChangeNotifierProvider(
@@ -426,8 +461,10 @@ void main() {
     testWidgets('move to another family finds the target and confirms', (
       tester,
     ) async {
-      when(() => repo.findFamilyByPhone('03211111111'))
-          .thenAnswer((_) async => ahmedFamily);
+      when(
+        () =>
+            repo.findFamilyByPhone('03211111111', source: any(named: 'source')),
+      ).thenAnswer((_) async => ahmedFamily);
       when(
         () => repo.movePatient(
           patientId: any(named: 'patientId'),

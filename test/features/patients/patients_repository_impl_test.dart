@@ -3,9 +3,11 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ramzan/core/errors/app_exception.dart';
+import 'package:ramzan/core/read_source.dart';
 import 'package:ramzan/features/patients/data/repositories/patients_repository_impl.dart';
 import 'package:ramzan/features/patients/domain/entities/patient.dart';
 import 'package:ramzan/features/patients/domain/repositories/patients_repository.dart';
+import 'package:ramzan/features/patients/domain/sync.dart';
 
 void main() {
   late FakeFirebaseFirestore db;
@@ -239,11 +241,94 @@ void main() {
     expect(await repo.watchFamily('missing').first, isNull);
   });
 
-  test('collection counts keep the offline cache listeners alive', () async {
+  group('delta sync (FIREBASE_ARCHITECTURE §9)', () {
+    Future<void> seed(String col, String id, DateTime? updatedAt) =>
+        db.doc('$col/$id').set({
+          'name': id,
+          'phone': '0300000000$id',
+          'headName': id,
+          'familyId': 'f',
+          'phones': <String>[],
+          'searchKeys': <String>[],
+          'deleted': false,
+          'updatedAt': updatedAt == null ? null : Timestamp.fromDate(updatedAt),
+        });
+
+    final t1 = DateTime.utc(2026, 11, 5, 8);
+    final t2 = DateTime.utc(2026, 11, 5, 9);
+    final t3 = DateTime.utc(2026, 11, 5, 10);
+
+    test(
+      'latestChange is the newest updatedAt, null for an empty set',
+      () async {
+        expect(await repo.latestChange(SyncCollection.patients), isNull);
+        await seed('patients', 'a', t1);
+        await seed('patients', 'b', t3);
+        await seed('patients', 'c', t2);
+        await seed('families', 'f', t2);
+        expect(await repo.latestChange(SyncCollection.patients), t3);
+        expect(await repo.latestChange(SyncCollection.families), t2);
+      },
+    );
+
+    test('pullChanges reads everything changed at or after the watermark, '
+        'in pages, and reports the newest change', () async {
+      await seed('patients', 'old', t1);
+      await seed('patients', 'same', t2);
+      await seed('patients', 'new1', t3);
+      await seed('patients', 'new2', t3);
+      await seed('patients', 'unstamped', null);
+      final result = await repo.pullChanges(
+        SyncCollection.patients,
+        after: t2,
+        pageSize: 2,
+      );
+      expect(result.count, 3);
+      expect(result.newest, t3);
+      // Nothing after the newest change except the documents at that instant.
+      final again = await repo.pullChanges(
+        SyncCollection.patients,
+        after: t3,
+        pageSize: 2,
+      );
+      expect(again.count, 2);
+      expect(again.newest, t3);
+      final empty = await repo.pullChanges(SyncCollection.families, after: t1);
+      expect(empty.count, 0);
+      expect(empty.newest, isNull);
+    });
+  });
+
+  test('searches accept a read source', () async {
     final id = await repo.createFamily(khanFamily);
     await repo.addPatient(familyId: id, input: ali);
-    expect(await repo.watchPatientCount().first, 1);
-    expect(await repo.watchFamilyCount().first, 1);
+    expect(
+      await repo.searchByName('ali', source: ReadSource.cache),
+      hasLength(1),
+    );
+    expect(
+      await repo.searchByPhone('03001234567', source: ReadSource.cache),
+      hasLength(1),
+    );
+    expect(
+      (await repo.findFamilyByPhone(
+        '03001234567',
+        source: ReadSource.cache,
+      ))?.id,
+      id,
+    );
+    expect(
+      await repo.getFamilies([id, 'missing'], source: ReadSource.cache),
+      hasLength(1),
+    );
+    expect(
+      (await repo.findByTempNo('T-AAAAA', source: ReadSource.cache))?.name,
+      'Ali Khan',
+    );
+    expect(
+      await repo.findByPatientNo('26-00001', source: ReadSource.server),
+      isNull,
+    );
   });
 
   test('signed-out writes fail with signed-out', () async {

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:provider/provider.dart';
 import 'package:ramzan/core/errors/app_exception.dart';
+import 'package:ramzan/core/read_source.dart';
 import 'package:ramzan/core/storage/image_shrinker.dart';
 import 'package:ramzan/core/storage/key_value_store.dart';
 import 'package:ramzan/core/theme/app_theme.dart';
@@ -23,6 +24,7 @@ import 'package:ramzan/features/operations/domain/repositories/operations_reposi
 import 'package:ramzan/features/patients/domain/entities/family.dart';
 import 'package:ramzan/features/patients/domain/entities/patient.dart';
 import 'package:ramzan/features/patients/domain/repositories/patients_repository.dart';
+import 'package:ramzan/features/patients/domain/sync.dart';
 import 'package:ramzan/features/prescriptions/domain/entities/prescription.dart';
 import 'package:ramzan/features/prescriptions/domain/repositories/prescriptions_repository.dart';
 import 'package:ramzan/features/reports/domain/entities/report.dart';
@@ -365,6 +367,9 @@ Visit sampleVisit({
 void registerPatientFallbacks() {
   registerFallbackValue(const PatientInput(name: '', gender: Gender.other));
   registerFallbackValue(const FamilyInput(phone: '', headName: ''));
+  registerFallbackValue(ReadSource.server);
+  registerFallbackValue(SyncCollection.patients);
+  registerFallbackValue(DateTime.utc(2000));
 }
 
 const khanFamily = Family(

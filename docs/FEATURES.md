@@ -198,7 +198,7 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - Whole clinic by default; a "My visits only" switch narrows it to visits the signed-in user created (decided 4 Nov 2026).
 
 ### 5.9 Offline behaviour
-- Reception web keeps working without internet: patient search of already-synced data, new patients, visits, tokens, payments, and receipts.
+- Reception web keeps working without internet: patient search of patients this device has already seen (searched, registered or pulled by the background sync; decided 5 Nov 2026, nothing is downloaded up front), new patients, visits, tokens, payments, and receipts. A patient the device has never seen needs the internet once; after that they are found offline.
 - Data syncs when the connection returns.
 - A visible indicator in the top bar shows Online, Offline, or Syncing with the number of visits still waiting to reach the server (built in Phase 4 with the visit flow, decided 4 Nov 2026).
 - Token numbers are issued locally while offline. v1 assumes one reception device, so no cross-device token conflict handling is built. If a second reception device is added later, conflict handling must be designed first.
