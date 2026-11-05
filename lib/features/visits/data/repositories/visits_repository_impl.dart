@@ -6,6 +6,7 @@ import '../../../../core/errors/firestore_errors.dart';
 import '../../../../core/firebase/offline_write.dart';
 import '../../../../core/utils/karachi_date.dart';
 import '../../../../core/utils/tokens.dart';
+import '../../domain/doctor_periods.dart';
 import '../../domain/entities/visit.dart';
 import '../../domain/repositories/visits_repository.dart';
 import '../../domain/visit_pricing.dart';
@@ -58,19 +59,22 @@ class VisitsRepositoryImpl implements VisitsRepository {
   // ----- reads ------------------------------------------------------------
 
   @override
-  Stream<DayVisits> watchVisitsOn(String date) => _visits
-      .where('date', isEqualTo: date)
-      .snapshots(includeMetadataChanges: true)
-      .map(
-        (snap) => DayVisits(
-          visits: _living(snap.docs),
-          pendingWrites: snap.docs
-              .where((d) => d.metadata.hasPendingWrites)
-              .length,
-          fromCache: snap.metadata.isFromCache,
-        ),
-      )
-      .handleError((Object e) => throw mapFirestoreError(e));
+  Stream<DayVisits> watchVisitsOn(String date, {String? doctorId}) {
+    Query<Map<String, dynamic>> q = _visits.where('date', isEqualTo: date);
+    if (doctorId != null) q = q.where('doctorId', isEqualTo: doctorId);
+    return q
+        .snapshots(includeMetadataChanges: true)
+        .map(
+          (snap) => DayVisits(
+            visits: _living(snap.docs),
+            pendingWrites: snap.docs
+                .where((d) => d.metadata.hasPendingWrites)
+                .length,
+            fromCache: snap.metadata.isFromCache,
+          ),
+        )
+        .handleError((Object e) => throw mapFirestoreError(e));
+  }
 
   @override
   Stream<List<Visit>> watchPatientVisits(String patientId) => _visits
@@ -139,6 +143,7 @@ class VisitsRepositoryImpl implements VisitsRepository {
           : '',
       status: VisitStatus.waiting,
       receiptCopies: input.receiptCopies,
+      operationId: input.operationId,
       createdBy: uid,
       createdAt: now,
       branchId: input.patient.branchId,
@@ -191,6 +196,27 @@ class VisitsRepositoryImpl implements VisitsRepository {
           }),
         );
       });
+
+  @override
+  Future<PeriodTotals> doctorTotals({
+    required String doctorId,
+    required DateRange range,
+  }) => _guard(() async {
+    final snap = await _visits
+        .where('doctorId', isEqualTo: doctorId)
+        .where('status', isEqualTo: VisitStatus.completed.key)
+        .where('deleted', isEqualTo: false)
+        .where('date', isGreaterThanOrEqualTo: range.from)
+        .where('date', isLessThanOrEqualTo: range.to)
+        .aggregate(count(), sum('fee'), sum('discountAmount'), sum('netAmount'))
+        .get();
+    return PeriodTotals(
+      visits: snap.count ?? 0,
+      fee: snap.getSum('fee')?.round() ?? 0,
+      discount: snap.getSum('discountAmount')?.round() ?? 0,
+      net: snap.getSum('netAmount')?.round() ?? 0,
+    );
+  });
 
   Future<T> _guard<T>(Future<T> Function() body) async {
     try {

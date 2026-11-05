@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:provider/provider.dart';
 import 'package:ramzan/core/errors/app_exception.dart';
+import 'package:ramzan/core/storage/image_shrinker.dart';
 import 'package:ramzan/core/storage/key_value_store.dart';
 import 'package:ramzan/core/theme/app_theme.dart';
 import 'package:ramzan/features/auth/domain/entities/app_user.dart';
@@ -17,14 +18,21 @@ import 'package:ramzan/features/catalog/domain/entities/department.dart';
 import 'package:ramzan/features/catalog/domain/entities/doctor.dart';
 import 'package:ramzan/features/catalog/domain/entities/visit_type.dart';
 import 'package:ramzan/features/catalog/domain/repositories/catalog_repository.dart';
+import 'package:ramzan/features/operations/domain/entities/operation.dart';
+import 'package:ramzan/features/operations/domain/repositories/operations_repository.dart';
 import 'package:ramzan/features/patients/domain/entities/family.dart';
 import 'package:ramzan/features/patients/domain/entities/patient.dart';
 import 'package:ramzan/features/patients/domain/repositories/patients_repository.dart';
+import 'package:ramzan/features/prescriptions/domain/entities/prescription.dart';
+import 'package:ramzan/features/prescriptions/domain/repositories/prescriptions_repository.dart';
+import 'package:ramzan/features/reports/domain/entities/report.dart';
+import 'package:ramzan/features/reports/domain/repositories/reports_repository.dart';
 import 'package:ramzan/features/settings/domain/entities/clinic_settings.dart';
 import 'package:ramzan/features/settings/domain/entities/initial_setup_input.dart';
 import 'package:ramzan/features/settings/domain/repositories/settings_repository.dart';
 import 'package:ramzan/features/settings/presentation/viewmodels/settings_controller.dart';
 import 'package:ramzan/features/users/domain/repositories/user_admin_repository.dart';
+import 'package:ramzan/features/visits/domain/doctor_periods.dart';
 import 'package:ramzan/features/visits/domain/entities/visit.dart';
 import 'package:ramzan/features/visits/domain/repositories/visits_repository.dart';
 import 'package:ramzan/features/visits/presentation/receipt/receipt_printer.dart';
@@ -117,6 +125,161 @@ class MockSettingsRepository extends Mock implements SettingsRepository {}
 class MockPatientsRepository extends Mock implements PatientsRepository {}
 
 class MockVisitsRepository extends Mock implements VisitsRepository {}
+
+class MockPrescriptionsRepository extends Mock
+    implements PrescriptionsRepository {}
+
+class MockReportsRepository extends Mock implements ReportsRepository {}
+
+class MockOperationsRepository extends Mock implements OperationsRepository {}
+
+/// Records shrink calls and returns [result], or the input unchanged.
+class FakeImageShrinker implements ImageShrinker {
+  int calls = 0;
+  ShrunkImage? result;
+
+  @override
+  Future<ShrunkImage> shrink({
+    required Uint8List bytes,
+    required String mimeType,
+    required int maxSide,
+    required int quality,
+  }) async {
+    calls++;
+    return result ?? ShrunkImage(bytes: bytes, mimeType: mimeType);
+  }
+}
+
+/// Call once (setUpAll) before using `any()` with reports or operations.
+void registerOperationFallbacks() {
+  registerPrescriptionFallbacks();
+  registerFallbackValue(sampleOperation());
+  registerFallbackValue(
+    ScheduleOperationInput(
+      visit: sampleVisit(),
+      visitType: cataract,
+      surgeon: doctorSara,
+      scheduledById: 'doctor-sara',
+      scheduledDate: '2026-11-10',
+      notes: '',
+    ),
+  );
+  registerFallbackValue(
+    ReportUpload(
+      patient: patientAli,
+      title: 't',
+      fileName: 'f.pdf',
+      mimeType: 'application/pdf',
+      bytes: Uint8List(1),
+    ),
+  );
+}
+
+Operation sampleOperation({
+  String id = 'op-1',
+  Visit? visit,
+  String scheduledDate = '2026-11-10',
+  OperationStatus status = OperationStatus.scheduled,
+  List<OperationChecklistItem>? checklist,
+  List<int> postOpDays = const [1, 7, 30],
+  String notes = '',
+}) {
+  final v = visit ?? sampleVisit();
+  return Operation(
+    id: id,
+    patientId: v.patientId,
+    patientName: v.patientName,
+    patientNo: v.patientNo,
+    phone: v.phone,
+    visitId: v.id,
+    visitTypeId: cataract.id,
+    visitTypeName: cataract.name,
+    surgeonDoctorId: doctorSara.id,
+    surgeonName: doctorSara.name,
+    departmentId: 'eye',
+    scheduledById: doctorSara.id,
+    scheduledDate: scheduledDate,
+    status: status,
+    checklist:
+        checklist ??
+        const [
+          OperationChecklistItem(id: 'c1', label: 'Blood sugar'),
+          OperationChecklistItem(id: 'c2', label: 'Consent signed'),
+        ],
+    postOpDays: postOpDays,
+    surgeryAppointmentId: 'apt-s',
+    followUpAppointmentIds: const ['apt-1', 'apt-7', 'apt-30'],
+    notes: notes,
+    createdBy: 'doc-1',
+    createdAt: DateTime.utc(2026, 11, 5, 6),
+  );
+}
+
+Report sampleReport({
+  String id = 'rep-1',
+  String title = 'Blood test',
+  String? visitId,
+  String mimeType = 'application/pdf',
+  DateTime? uploadedAt,
+}) => Report(
+  id: id,
+  patientId: patientAli.id,
+  patientName: patientAli.name,
+  visitId: visitId,
+  title: title,
+  fileName: 'scan.pdf',
+  storagePath: 'patients/pat-ali/reports/$id.pdf',
+  downloadUrl: 'https://example.test/$id.pdf',
+  mimeType: mimeType,
+  sizeBytes: 2048,
+  uploadedBy: 'rec-1',
+  uploadedAt: uploadedAt ?? DateTime.utc(2026, 11, 4, 7),
+);
+
+/// Call once (setUpAll) before using `any()` with prescriptions or visits.
+void registerPrescriptionFallbacks() {
+  registerVisitFallbacks();
+  registerFallbackValue(sampleVisit());
+  registerFallbackValue(samplePrescription());
+  registerFallbackValue(const DateRange(from: '2026-11-04', to: '2026-11-04'));
+}
+
+/// A prescription for [visit] with Eye values by default.
+Prescription samplePrescription({
+  Visit? visit,
+  EyePrescription? eye = const EyePrescription(
+    od: EyeValues(sph: '-1.25', cyl: '-0.50', axis: '90', va: '6/6'),
+    os: EyeValues(sph: '-1.00', va: '6/9'),
+  ),
+  List<HomeoLine> homeo = const [],
+  String diagnosis = 'Myopia',
+  String advice = '',
+  String? followUpDate,
+  String? followUpAppointmentId,
+  String createdBy = 'doc-1',
+  DateTime? createdAt,
+}) {
+  final v = visit ?? sampleVisit();
+  return Prescription(
+    id: v.id,
+    visitId: v.id,
+    patientId: v.patientId,
+    patientName: v.patientName,
+    patientNo: v.patientNo,
+    doctorId: v.doctorId,
+    doctorName: v.doctorName,
+    departmentId: v.departmentId,
+    date: v.date,
+    createdBy: createdBy,
+    eye: eye,
+    homeo: homeo,
+    diagnosis: diagnosis,
+    advice: advice,
+    followUpDate: followUpDate,
+    followUpAppointmentId: followUpAppointmentId,
+    createdAt: createdAt ?? DateTime.utc(2026, 11, 4, 7),
+  );
+}
 
 /// Call once (setUpAll) before using `any()` with visit inputs.
 void registerVisitFallbacks() {
@@ -457,6 +620,9 @@ Widget wrapWithProviders({
   SettingsController? settingsController,
   PatientsRepository? patientsRepository,
   VisitsRepository? visitsRepository,
+  PrescriptionsRepository? prescriptionsRepository,
+  ReportsRepository? reportsRepository,
+  OperationsRepository? operationsRepository,
   DevToolsRepository? devTools,
   Size size = const Size(1280, 800),
 }) {
@@ -477,6 +643,12 @@ Widget wrapWithProviders({
         Provider<PatientsRepository>.value(value: patientsRepository),
       if (visitsRepository != null)
         Provider<VisitsRepository>.value(value: visitsRepository),
+      if (prescriptionsRepository != null)
+        Provider<PrescriptionsRepository>.value(value: prescriptionsRepository),
+      if (reportsRepository != null)
+        Provider<ReportsRepository>.value(value: reportsRepository),
+      if (operationsRepository != null)
+        Provider<OperationsRepository>.value(value: operationsRepository),
       if (devTools != null) Provider<DevToolsRepository>.value(value: devTools),
     ],
     child: MediaQuery(

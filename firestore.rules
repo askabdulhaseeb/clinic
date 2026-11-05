@@ -8,6 +8,8 @@ rules_version = '2';
 // Phase 2: `branches`, `settings`, `departments`, `visitTypes`, `doctors`.
 // Phase 3: `families`, `patients` (`counters` stays Functions-only).
 // Phase 4: `visits`.
+// Phase 5A: `prescriptions`, `appointments`.
+// Phase 5B: `reports`, `operations`; doctors edit visit-type defaults.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -130,13 +132,22 @@ service cloud.firestore {
         && request.resource.data.isFollowUp is bool
         && request.resource.data.active is bool
         && createdByIsCaller();
-      allow update: if isAdmin()
+      allow update: if
+        (isAdmin()
         && isNonEmptyString(request.resource.data.name)
         && isNonEmptyString(request.resource.data.departmentId)
         && request.resource.data.isOperation is bool
         && request.resource.data.isFollowUp is bool
         && request.resource.data.active is bool
-        && updatedByIsCaller();
+        && updatedByIsCaller())
+        ||
+        // Phase 5B: doctors maintain the defaults of operation types.
+        (isDoctor()
+          && resource.data.isOperation == true
+          && changedKeys().hasOnly(['defaultPreOpChecklist', 'defaultPostOpDays', 'updatedAt', 'updatedBy'])
+          && request.resource.data.defaultPreOpChecklist is list
+          && request.resource.data.defaultPostOpDays is list
+          && updatedByIsCaller());
       allow delete: if false;
     }
 
@@ -292,6 +303,146 @@ service cloud.firestore {
         ||
         (isOwnDoctor(resource.data.doctorId)
           && statusOnlyChange(['status', 'startedAt', 'completedAt', 'hasPrescription']));
+      allow delete: if false;
+    }
+
+    // ----- prescriptions/{visitId}  (§4.12) -------------------------------
+    // Written only by the doctor of the visit (claim doctorId == the visit's
+    // doctorId, one get). ID = visitId, date = the visit's date. Editable
+    // until the end of the prescription's Karachi day (decided 5 Nov 2026):
+    // `date` + 1 day at 00:00 Karachi is `date` 19:00 UTC.
+    function visitOf(visitId) {
+      return get(/databases/$(database)/documents/visits/$(visitId)).data;
+    }
+
+    function beforeEndOfKarachiDay(date) {
+      return request.time < timestamp.date(
+          int(date.split('-')[0]),
+          int(date.split('-')[1]),
+          int(date.split('-')[2])
+        ) + duration.value(19, 'h');
+    }
+
+    match /prescriptions/{visitId} {
+      allow read: if isSignedIn();
+      allow create: if isDoctor()
+        && request.resource.data.visitId == visitId
+        && isNonEmptyString(request.resource.data.patientId)
+        && isNonEmptyString(request.resource.data.date)
+        && isOwnDoctor(request.resource.data.doctorId)
+        && isOwnDoctor(visitOf(visitId).doctorId)
+        && request.resource.data.date == visitOf(visitId).date
+        && inCallerBranch(request.resource.data.branchId)
+        && createdByIsCaller();
+      allow update: if isOwnDoctor(resource.data.doctorId)
+        && beforeEndOfKarachiDay(resource.data.date)
+        && !changedKeys().hasAny(['visitId', 'patientId', 'doctorId', 'departmentId', 'date', 'branchId', 'createdAt', 'createdAtLocal', 'createdBy'])
+        && updatedByIsCaller();
+      allow delete: if false;
+    }
+
+    // ----- appointments/{appointmentId}  (§4.10) ---------------------------
+    // Reception, doctors and Admin book and change; follow-ups are written
+    // by the prescription batch. Never deleted (cancelled instead).
+    function isStaff() {
+      return isReception() || isDoctor() || isAdmin();
+    }
+
+    function appointmentShapeValid(a) {
+      return isNonEmptyString(a.patientId)
+        && isNonEmptyString(a.patientName)
+        && isNonEmptyString(a.doctorId)
+        && isNonEmptyString(a.date)
+        && a.status in ['booked', 'arrived', 'cancelled', 'noShow']
+        && a.source in ['manual', 'followUp', 'postOp', 'operation'];
+    }
+
+    match /appointments/{appointmentId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff()
+        && appointmentShapeValid(request.resource.data)
+        && inCallerBranch(request.resource.data.branchId)
+        && createdByIsCaller();
+      allow update: if isStaff()
+        && appointmentShapeValid(request.resource.data)
+        && !changedKeys().hasAny(['branchId', 'createdAt', 'createdAtLocal', 'createdBy'])
+        && updatedByIsCaller();
+      allow delete: if false;
+    }
+
+    // ----- reports/{reportId}  (§4.13) ------------------------------------
+    // Reception and Admin upload (file first, record second) and may rename
+    // or soft-delete with a reason. File fields never change.
+    function reportShapeValid(r) {
+      return isNonEmptyString(r.patientId)
+        && isNonEmptyString(r.title)
+        && isNonEmptyString(r.storagePath)
+        && r.mimeType in ['application/pdf', 'image/jpeg', 'image/png']
+        && r.sizeBytes is int
+        && r.sizeBytes > 0
+        && r.sizeBytes <= 10 * 1024 * 1024;
+    }
+
+    match /reports/{reportId} {
+      allow read: if isSignedIn();
+      allow create: if isReceptionOrAdmin()
+        && reportShapeValid(request.resource.data)
+        && request.resource.data.deleted == false
+        && request.resource.data.uploadedBy == request.auth.uid
+        && inCallerBranch(request.resource.data.branchId)
+        && createdByIsCaller();
+      allow update: if isReceptionOrAdmin()
+        && changedKeys().hasOnly(['title', 'deleted', 'deletedAt', 'deletedBy', 'deleteReason', 'updatedAt', 'updatedBy'])
+        && isNonEmptyString(request.resource.data.title)
+        && (request.resource.data.deleted == false
+            || isNonEmptyString(request.resource.data.deleteReason))
+        && updatedByIsCaller();
+      allow delete: if false;
+    }
+
+    // ----- operations/{operationId}  (§4.14) ------------------------------
+    // Doctors and Admin schedule and manage; reception may only change the
+    // post-op days (and the appointment ids the regeneration writes).
+    function operationShapeValid(o) {
+      return isNonEmptyString(o.patientId)
+        && isNonEmptyString(o.visitTypeId)
+        && isNonEmptyString(o.surgeonDoctorId)
+        && isNonEmptyString(o.scheduledDate)
+        && o.status in ['scheduled', 'done', 'cancelled']
+        && o.checklist is list
+        && o.postOpDays is list;
+    }
+
+    function operationStatusValid(o) {
+      return (o.status != 'done'
+              || (isNonEmptyString(o.doneBy)
+                  && (o.checklistComplete == true
+                      || isNonEmptyString(o.checklistOverrideReason))))
+        && (o.status != 'cancelled' || isNonEmptyString(o.cancelReason));
+    }
+
+    function isDoctorOrAdmin() {
+      return isDoctor() || isAdmin();
+    }
+
+    match /operations/{operationId} {
+      allow read: if isSignedIn();
+      allow create: if isDoctorOrAdmin()
+        && operationShapeValid(request.resource.data)
+        && request.resource.data.status == 'scheduled'
+        && inCallerBranch(request.resource.data.branchId)
+        && createdByIsCaller();
+      allow update: if
+        (isDoctorOrAdmin()
+          && operationShapeValid(request.resource.data)
+          && operationStatusValid(request.resource.data)
+          && !changedKeys().hasAny(['branchId', 'createdAt', 'createdAtLocal', 'createdBy'])
+          && updatedByIsCaller())
+        ||
+        (isReception()
+          && changedKeys().hasOnly(['postOpDays', 'followUpAppointmentIds', 'updatedAt', 'updatedBy'])
+          && request.resource.data.postOpDays is list
+          && updatedByIsCaller());
       allow delete: if false;
     }
 

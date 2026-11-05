@@ -6,11 +6,13 @@ import 'package:provider/provider.dart';
 
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/karachi_date.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/page_header.dart';
 import '../../../auth/domain/entities/user_role.dart';
 import '../../../catalog/domain/repositories/catalog_repository.dart';
+import '../../../operations/domain/repositories/operations_repository.dart';
 import '../../../patients/domain/repositories/patients_repository.dart';
 import '../../../patients/presentation/widgets/patient_header.dart';
 import '../../../settings/domain/entities/clinic_settings.dart';
@@ -19,6 +21,7 @@ import '../../domain/entities/visit.dart';
 import '../../domain/repositories/visits_repository.dart';
 import '../../domain/visit_pricing.dart';
 import '../receipt/print_receipt.dart';
+import '../receipt/receipt_pdf.dart';
 import '../receipt/receipt_printer.dart';
 import '../viewmodels/new_visit_vm.dart';
 import '../viewmodels/today_visits_controller.dart';
@@ -50,6 +53,7 @@ class NewVisitScreen extends StatelessWidget {
         catalogRepository: context.read<CatalogRepository>(),
         patientId: patientId,
         defaultCopies: settings.defaultReceiptCopies,
+        operationsRepository: context.read<OperationsRepository?>(),
         waitingCount: today?.waitingCount,
       ),
       child: NewVisitView(
@@ -311,6 +315,16 @@ class _Form extends StatelessWidget {
                       ],
                     ),
             ),
+            if (vm.linkedOperation case final op?)
+              _Row(
+                label: '',
+                child: Text(
+                  'Operation scheduled for '
+                  '${ReceiptPdf.formatDate(KarachiDate.parse(op.scheduledDate))}',
+                  key: const Key('visit-operation-link'),
+                  style: text.bodyMedium?.copyWith(color: scheme.primary),
+                ),
+              ),
             _Row(
               label: 'Fee',
               child: Text(

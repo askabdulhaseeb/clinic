@@ -34,8 +34,17 @@ abstract final class AppRoutes {
   // Doctor sections (Phase 5-6).
   static const String doctorQueue = '/doctor/queue';
   static const String doctorPatients = '/doctor/patients';
+  static const String doctorPatientPattern = '/doctor/patients/:id';
+  static const String doctorVisitPattern = '/doctor/visits/:id';
   static const String doctorOperations = '/doctor/operations';
+  static const String doctorOperationPattern = '/doctor/operations/:id';
   static const String doctorMe = '/doctor/me';
+
+  /// `/doctor/visits/<id>`: the consultation page (Phase 5A).
+  static String doctorVisit(String id) => '/doctor/visits/$id';
+
+  /// `/doctor/operations/<id>` (Phase 5B).
+  static String doctorOperation(String id) => '$doctorOperations/$id';
 
   // Admin sections.
   static const String adminDashboard = '/admin/dashboard';

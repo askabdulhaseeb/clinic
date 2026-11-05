@@ -26,6 +26,11 @@ void main() {
       subscribedDates.add(inv.positionalArguments.first as String);
       return day.stream;
     });
+    when(() => repo.watchVisitsOn(any(), doctorId: any(named: 'doctorId')))
+        .thenAnswer((inv) {
+          subscribedDates.add(inv.positionalArguments.first as String);
+          return day.stream;
+        });
   });
   tearDown(() async {
     await day.close();
@@ -39,7 +44,7 @@ void main() {
         clock: () => now,
       );
 
-  test('listens for reception and admin, not for a plain doctor', () async {
+  test('listens for reception, admin and doctor sessions', () async {
     final rec = make(await signedInSession(auth, receptionUser));
     expect(rec.listening, isTrue);
     expect(subscribedDates, ['2026-11-04']);
@@ -49,8 +54,10 @@ void main() {
     expect(adm.listening, isTrue);
     adm.dispose();
 
+    // A doctor-only session listens too, scoped to their own visits
+    // (Phase 5A); see doctor_today_visits_controller_test.dart.
     final doc = make(await signedInSession(auth, doctorUser));
-    expect(doc.listening, isFalse);
+    expect(doc.listening, isTrue);
     doc.dispose();
   });
 

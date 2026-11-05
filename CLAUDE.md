@@ -33,10 +33,12 @@ flutter test                                     # unit + widget, no Firebase
 flutter test test/features/users/users_vm_test.dart          # one file
 flutter test --name "deactivate"                 # tests matching a name
 cd functions && npm run build                    # tsc; the emulator serves lib/, so rebuild after editing src/
+cd functions && npm run lint                     # tsc --noEmit
 cd functions && npm test                         # Functions + rules tests inside emulators:exec
-cd functions && firebase emulators:exec --only firestore,auth,storage "npx jest test/rules.test.ts"   # one Jest file
+cd functions && firebase emulators:exec --only firestore,auth,storage "npx jest test/rules.test.ts"   # one Jest file (storage.test.ts covers storage.rules)
 tool/integration_test_web.sh                     # every integration_test/*_test.dart on headless Chrome + emulators
 tool/integration_test_web.sh --no-headless       # same, visible Chrome window
+                                                 # the script rebuilds functions first; extra flags go to flutter drive (window is 1280x800)
 ```
 
 One integration file (the script downloads ChromeDriver into `.dart_tool/chromedriver` on first run; start it on port 4444 yourself, then):
@@ -45,6 +47,16 @@ One integration file (the script downloads ChromeDriver into `.dart_tool/chromed
 firebase emulators:exec --only auth,firestore,functions,storage \
   "node functions/scripts/seed-emulator.js && flutter drive --driver=test_driver/integration_test.dart \
    --target=integration_test/login_flow_test.dart -d web-server --dart-define=USE_EMULATORS=true"
+```
+
+If the owner's Emulator Suite is already up (`lsof -nP -iTCP:8080 -sTCP:LISTEN`), the `emulators:exec` wrappers fail with "port taken". Run against it directly, then re-seed, because the Jest suites clear Firestore and Storage:
+
+```sh
+cd functions && npx jest --runInBand                                   # all Functions + rules tests
+curl -X DELETE "http://127.0.0.1:8080/emulator/v1/projects/ramzan-clinic-web/databases/(default)/documents"   # wipe Firestore
+node functions/scripts/seed-emulator.js
+.dart_tool/chromedriver/chromedriver/*/chromedriver-mac-arm64/chromedriver --port=4444 &   # absolute path, then per file:
+flutter drive --driver=test_driver/integration_test.dart --target=integration_test/login_flow_test.dart -d web-server --browser-dimension=1280x800 --dart-define=USE_EMULATORS=true
 ```
 
 Run the app against the emulators instead of the live project:
@@ -75,22 +87,27 @@ Summary; details in DEVELOPMENT_PLAN §4–§8.
 - Screens come in pairs: `FooScreen` creates the view model from context and renders `FooView`, which only reads the view model. Widget tests pump `FooView` with a mocked or fake view model dependency. Interactive widgets carry `Key('...')` names that both widget and integration tests use.
 - Admin writes to users go through callables (`createUser`, `setUserRoles`, `resetUserPassword`), which also keep `doctors.userId` in step with `users.doctorId`. Everything else (settings, catalog, families, patients) is written directly under rules; Firestore triggers (`assignPatientNo`, `checkDuplicateFamilyPhone`) fill in the functions-only fields afterwards, and rules lock those fields against clients.
 - Cloud Functions (`functions/src/`, TypeScript, 2nd gen): each callable is `onCall(wrap(fooCore))` where `fooCore(deps, callerUid, callerClaims, data)` is pure enough to test against the emulators; `validation.ts` turns raw input into typed input or `invalid-argument`. Roles are custom claims; rules read `request.auth.token.roles`, not the user document.
-- Test helpers in `test/helpers/fakes.dart`: `FakeAuthRepository`, `FakeSettingsRepository`, `stubbedCatalog()`, sample entities, `signedInSession()`, `wrapWithProviders()`. Functions tests clear the emulators over REST in `beforeEach`; rules tests load `firestore.rules` from the repo root.
-- Patient screens take a `role` and are mounted under both `/reception/patients` and `/admin/patients` (`_patientRoutes` in the router, paths from `AppRoutes.patientsFor` etc.).
+- Test helpers in `test/helpers/fakes.dart`: `FakeAuthRepository`, `FakeSettingsRepository`, mocktail mocks per repository with `register*Fallbacks()`, `stubbedCatalog()`, sample entities and builders (`sampleVisit`, `samplePrescription`, `sampleOperation`, `sampleReport`), `signedInSession()`, `wrapWithProviders()`. Functions tests clear the emulators over REST in `beforeEach`; rules tests load `firestore.rules` / `storage.rules` from the repo root.
+- Patient and visit screens take a `role` and are mounted under both `/reception/...` and `/admin/...` (`_patientRoutes`, `_visitRoutes`; paths from `AppRoutes.patientsFor` etc.). Doctor pages (`/doctor/visits/:id`, `/doctor/patients/:id`, `/doctor/operations/:id`) come from `_doctorRoutes()`; `PatientSearchScreen(role: doctor)` is read-only.
+- Live data is held once, high in the tree: `TodayVisitsController` keeps the single listener on today's visits (whole day for reception/admin, the doctor's own for doctor-only sessions via `scopedDoctorId`) that the visits list, both queues, the shift summary, `SyncBadge` and the new-visit "waiting now" count read. Start/Complete logic shared by the reception board and the doctor queue is the `VisitStatusActions` mixin.
+- Firestore resolves a write's future only on server acknowledgement, so repositories wrap every write that must work offline in `commitOrQueue` (`core/firebase/offline_write.dart`): wait 1.5 s, then treat it as queued.
+- Doctor-side code is split by collection, not by role: `features/prescriptions/` (Rx entity, `EyeFields`/`PrescriptionRules`/`FollowUp`, consultation, prescription PDF), `features/reports/` (`ReportFiles`, repository over `FileStore` + `ImageShrinker`, `ReportsTab`), `features/operations/` (`OperationRules`/`PostOp`, schedule sheet, list, detail, Me-tab defaults editor), while the doctor queue and summary live in `features/visits/` and the history page in `features/patients/`.
+- Multi-document writes are one `WriteBatch` in the repository: a prescription save writes the Rx (id = visit id), `visits.hasPrescription` (+ completion) and its follow-up appointment; scheduling an operation writes the operation, a `source: operation` appointment on the surgery day and one `postOp` appointment per day, all regenerated when the date or days change. `appointments` documents are therefore already written in Phase 5; Phase 6 adds the screens.
+- PDFs (`pdf` package) are built on the client and printed through the `ReceiptPrinter` abstraction (`FakeReceiptPrinter` in tests). File and camera pickers sit behind typedefs (`LogoPicker`, `ReportPicker`) and image resizing behind `ImageShrinker`, so widget tests inject bytes; the browser file dialog cannot be driven from Chrome integration tests.
 - Integration tests (Chrome, emulators) never call `pumpAndSettle` (focused fields never settle on web); use the `waitFor` helpers in `integration_test/support.dart`. On web a TextField that was submitted loses focus and a later `enterText` into it is silently dropped, so tap the field (or its keyed clear button) before typing again. Files run in name order inside one emulator session, so `admin_setup_flow_test.dart` runs first and creates `settings/general`, which the seed deliberately leaves missing.
+- `bootstrapFirebase()` (`core/firebase/firebase_bootstrap.dart`) initialises Firebase once, turns on offline persistence everywhere and, when `USE_EMULATORS=true`, points Auth/Firestore/Functions/Storage at the emulator ports (Android uses `10.0.2.2`). Functions region constant lives there too. Local preferences go through `KeyValueStore` (`core/storage/`), with `InMemoryKeyValueStore` for tests.
+- `.github/modernize/` is unrelated Java-upgrade tooling left behind by an IDE; ignore it.
 - Dev helper: a debug-only "Create test admin" button on the login screen (admin@mytester.com / 1234567890, `createTestAdmin` callable gated by `ALLOW_TEST_ADMIN` in `functions/.env`). Phase 9 removes it.
 
 ## Firebase
 
 - Project `ramzan-clinic-web`, Firestore and Functions in `asia-south1`, Storage bucket in `us-central1` (not yet created on the live project), Blaze plan. `lib/firebase_options.dart` is generated; do not hand-edit.
 - The app talks to the live project in development unless `USE_EMULATORS=true`. All tests use the local Emulator Suite, never live data.
-- Rules are opened collection by collection per phase in `firestore.rules` and `storage.rules`; anything unmatched is denied. Add rules tests in `functions/test/rules.test.ts` with each new collection.
-- Composite indexes live in `firestore.indexes.json` (none yet): patient queries use a single `arrayContains` on `phones`/`searchKeys` and filter `deleted`/sort in the client on purpose. Add an index there, not in the console, when a query needs one.
+- Rules are opened collection by collection per phase in `firestore.rules` and `storage.rules`; anything unmatched is denied. Add rules tests in `functions/test/rules.test.ts` (Firestore) or `functions/test/storage.test.ts` (Storage) with each new collection or path. Rules can read `request.time` and parse the stored `YYYY-MM-DD` (`timestamp.date(...)`): the prescription same-day edit window works that way.
+- Composite indexes live in `firestore.indexes.json` (one so far: `visits(doctorId, status, deleted, date)` for the doctor's aggregate summary). Most list queries use one equality or `arrayContains` filter and filter `deleted`/sort in the client on purpose. Add an index there, not in the console, when a query needs one.
 - Functions tests get emulator hosts and the project id from `functions/test/setup.ts`; `functions/.env` holds `ALLOW_TEST_ADMIN` and is read by the emulator and by deploys.
 - App IDs: `ramzan.shop.ramzan`. Launcher name and browser title: Clinic.
 
 ## Current status
 
-Phase 0 done. Phase 1 (Auth and users), Phase 2 (Admin master data), Phase 3 (Patients and families) and Phase 4 (Reception visit flow: new visit with token, receipt PDF, visits list, queue board with status changes, shift summary, sync badge, offline writes) are built and verified as of 5 Nov 2026 (311 Flutter tests, 117 Functions/rules tests, 11 integration flows in four files). All four await owner screen review and the first deploy of Functions, Firestore rules and Storage rules. Next: Phase 5 (Doctor). Phase list and per-phase status in DEVELOPMENT_PLAN §6.
-
-Phase 4 notes: `TodayVisitsController` (provider tree) holds the single listener on today's visits that the Visits list, queue, summary, `SyncBadge` and the new-visit "waiting now" count read; visit screens are mounted under both `/reception/visits` and `/admin/visits` (`_visitRoutes`). Reception writes go through `commitOrQueue` (`core/firebase/offline_write.dart`) because Firestore only resolves write futures on server acknowledgement. Receipts are built with `pdf` behind `ReceiptPrinter`; tests use `FakeReceiptPrinter`. If the owner's Emulator Suite is already running (ports taken), run `cd functions && npx jest --runInBand` and `flutter drive ... -d web-server --dart-define=USE_EMULATORS=true` directly instead of the `emulators:exec` wrappers, then re-seed.
+Phases 0–5 are built and verified as of 5 Nov 2026 (Phase 5 in two checkpoints: 5A doctor queue, consultation, prescriptions, history, summary; 5B reports, operations, operation-type defaults). Phases 1–5 await the owner's screen review and the first deploy of Functions, Firestore rules, indexes and Storage rules. Next: Phase 6 (Appointments and reminders). Per-phase status, decisions and test counts are in DEVELOPMENT_PLAN §1 and §6; screen keys in UI_DESIGN §4. Integration flows: six files, run in name order.

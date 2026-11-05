@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'app.dart';
 import 'core/firebase/firebase_bootstrap.dart';
 import 'core/storage/file_store.dart';
+import 'core/storage/image_shrinker.dart';
 import 'core/storage/key_value_store.dart';
 import 'features/auth/data/repositories/auth_repository_impl.dart';
 import 'features/auth/data/repositories/dev_tools_repository_impl.dart';
@@ -17,9 +18,15 @@ import 'features/auth/domain/repositories/dev_tools_repository.dart';
 import 'features/auth/presentation/viewmodels/session_controller.dart';
 import 'features/catalog/data/repositories/catalog_repository_impl.dart';
 import 'features/catalog/domain/repositories/catalog_repository.dart';
+import 'features/operations/data/repositories/operations_repository_impl.dart';
+import 'features/operations/domain/repositories/operations_repository.dart';
 import 'features/patients/data/repositories/patients_repository_impl.dart';
 import 'features/patients/domain/repositories/patients_repository.dart';
 import 'features/patients/presentation/viewmodels/patient_cache_controller.dart';
+import 'features/prescriptions/data/repositories/prescriptions_repository_impl.dart';
+import 'features/prescriptions/domain/repositories/prescriptions_repository.dart';
+import 'features/reports/data/repositories/reports_repository_impl.dart';
+import 'features/reports/domain/repositories/reports_repository.dart';
 import 'features/settings/data/repositories/settings_repository_impl.dart';
 import 'features/settings/domain/repositories/settings_repository.dart';
 import 'features/settings/presentation/viewmodels/settings_controller.dart';
@@ -65,6 +72,22 @@ Future<void> main() async {
         ),
         Provider<VisitsRepository>(
           create: (_) => VisitsRepositoryImpl(firestore: firestore, auth: auth),
+        ),
+        Provider<PrescriptionsRepository>(
+          create: (_) =>
+              PrescriptionsRepositoryImpl(firestore: firestore, auth: auth),
+        ),
+        Provider<ReportsRepository>(
+          create: (_) => ReportsRepositoryImpl(
+            firestore: firestore,
+            auth: auth,
+            files: FirebaseFileStore(storage: storage),
+            shrinker: const FlutterImageCompressShrinker(),
+          ),
+        ),
+        Provider<OperationsRepository>(
+          create: (_) =>
+              OperationsRepositoryImpl(firestore: firestore, auth: auth),
         ),
         Provider<SettingsRepository>(
           create: (_) => SettingsRepositoryImpl(

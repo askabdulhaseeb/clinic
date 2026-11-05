@@ -13,6 +13,7 @@ import 'package:ramzan/features/patients/presentation/screens/patient_search_scr
 import 'package:ramzan/features/patients/presentation/viewmodels/patient_detail_vm.dart';
 import 'package:ramzan/features/patients/presentation/viewmodels/patient_form_vm.dart';
 import 'package:ramzan/features/patients/presentation/viewmodels/patient_search_vm.dart';
+import 'package:ramzan/features/reports/domain/repositories/reports_repository.dart';
 import 'package:ramzan/features/visits/domain/repositories/visits_repository.dart';
 
 import '../../helpers/fakes.dart';
@@ -21,6 +22,7 @@ void main() {
   late FakeAuthRepository auth;
   late MockPatientsRepository repo;
   late MockVisitsRepository visits;
+  late MockReportsRepository reports;
   final today = DateTime.utc(2026, 11, 4, 6);
 
   setUpAll(registerPatientFallbacks);
@@ -29,6 +31,9 @@ void main() {
     auth = FakeAuthRepository();
     repo = MockPatientsRepository();
     visits = MockVisitsRepository();
+    reports = MockReportsRepository();
+    when(() => reports.watchPatientReports(any()))
+        .thenAnswer((_) => Stream.value(const []));
     when(() => visits.watchPatientVisits(any()))
         .thenAnswer((_) => Stream.value(const []));
     when(() => repo.getFamilies(any())).thenAnswer((inv) async {
@@ -78,6 +83,7 @@ void main() {
           ChangeNotifierProvider.value(value: session!),
           Provider<PatientsRepository>.value(value: repo),
           Provider<VisitsRepository>.value(value: visits),
+          Provider<ReportsRepository>.value(value: reports),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -324,7 +330,10 @@ void main() {
       expect(find.text('No visits yet'), findsOneWidget);
       await tester.tap(find.text('Reports'));
       await tester.pumpAndSettle();
-      expect(find.text('Reports — coming in Phase 5'), findsOneWidget);
+      await tester.tap(find.text('Reports'));
+      await tester.pumpAndSettle();
+      expect(find.text('No reports yet'), findsOneWidget);
+      expect(find.byKey(const Key('reports-upload')), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('patient-whatsapp')));
       await tester.pump();

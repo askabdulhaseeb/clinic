@@ -1,6 +1,6 @@
 # Clinic Management App — Feature Specification
 
-**Status:** Draft v9 — 4 Nov 2026. v9: Phase 4 decisions (reception may move visits through the queue, preset discount reasons, clinic-wide shift summary with a personal toggle, sync badge built with the visit flow). v8: Phase 3 decisions (age stored as an approximate date of birth, family phone clash blocked when online, placeholder tabs on the patient page). v7: Phase 2 decisions (doctor–login link kept by Cloud Functions, first-run setup banner, editable department code, WhatsApp template placeholders). v6: budget decisions — prescriptions are typed only (no photos), no managed backup, dashboard totals kept by increments, Storage bucket in a US region for the no-cost quota. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
+**Status:** Draft v11 — 5 Nov 2026. v11: Phase 5B decisions (surgery day booked as an appointment, surgeon picker, automatic visit–operation link, soft report deletes by reception, upload from the patient page, strict checklist with override). v10: Phase 5 decisions (two checkpoints 5A/5B, follow-ups become appointments at once, Save and Complete separate, same-day prescription edits, quick follow-up chips, doctor summary with own fees). v9: Phase 4 decisions (reception may move visits through the queue, preset discount reasons, clinic-wide shift summary with a personal toggle, sync badge built with the visit flow). v8: Phase 3 decisions (age stored as an approximate date of birth, family phone clash blocked when online, placeholder tabs on the patient page). v7: Phase 2 decisions (doctor–login link kept by Cloud Functions, first-run setup banner, editable department code, WhatsApp template placeholders). v6: budget decisions — prescriptions are typed only (no photos), no managed backup, dashboard totals kept by increments, Storage bucket in a US region for the no-cost quota. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
 **Project:** `ramzan` (Flutter). Clinic name is not hard-coded; Admin sets it in Settings and it appears on receipts and the app header.
 
 This document is the source of truth for what the app does. Code follows this document. Anything not written here is not a requirement yet.
@@ -64,6 +64,17 @@ Reception runs on the **web** at the front desk and must keep working **offline*
 | Shift summary scope | Decided 4 Nov 2026. Today's totals for the whole clinic, with a "My visits only" switch that keeps the visits the signed-in user created. Computed from the visits already loaded for the queue, no extra reads. |
 | Fee on a visit | Decided 4 Nov 2026. The fee comes from the doctor's fee schedule and is read-only at reception. When no fee is set for that doctor and visit type the form says so and will not save; Admin fixes the fee grid. |
 | Visits list scope | Decided 4 Nov 2026. The reception Visits page lists today's visits only (one listener shared with the queue, the summary and the sync badge). Older visits are reached from the patient page, which also reprints receipts. |
+| Phase 5 checkpoints | Decided 5 Nov 2026. The Doctor phase is reviewed in two parts. 5A: own queue, consultation, Eye and Homeo prescriptions with PDF, patient history, personal summary. 5B: reports upload and view, operations with checklist and post-op follow-ups, doctor edits of operation-type defaults. |
+| Follow-ups become appointments | Decided 5 Nov 2026. Setting a follow-up date on a prescription (and, in 5B, post-op days on an operation) writes real `appointments` documents in the same batch (`source: followUp`, time empty). Phase 6 adds the screens; nothing is backfilled. Changing the date updates the same appointment; clearing it cancels it. |
+| Saving a prescription | Decided 5 Nov 2026. Save writes the prescription and keeps the visit in progress. Complete saves it again and marks the visit completed in one batch. Complete without a prescription asks for confirmation first. |
+| Prescription edits | Decided 5 Nov 2026. The assigned doctor may edit a prescription until the end of its Karachi day, even after the visit is completed. After that it is read-only and can only be reprinted. Rules enforce the day. |
+| Follow-up date entry | Decided 5 Nov 2026. Quick chips (3 days, 1 week, 2 weeks, 1 month) plus a calendar picker for any date; stored as `YYYY-MM-DD`, no time. |
+| Surgery-day appointment | Decided 5 Nov 2026. Scheduling an operation books one appointment on the surgery date (`source: operation`, the operation type in its notes) plus the post-op follow-ups. Moving the date moves it; cancelling the operation cancels all of them. |
+| Surgeon | Decided 5 Nov 2026. Any active doctor of the department can be the surgeon; the scheduling doctor is preselected. The operation appears in the surgeon's list. |
+| Visit ↔ operation link | Decided 5 Nov 2026. When reception issues a token with an operation visit type and the patient has a scheduled operation of that type, the new-visit form links it (`visits.operationId`) and shows "Operation scheduled for <date>". The doctor's Operation tab opens that record. |
+| Report delete | Decided 5 Nov 2026. Reception and Admin may hide a wrongly uploaded report (soft delete with a reason; the file stays). |
+| Report upload | Decided 5 Nov 2026. From the patient page's Reports tab: title, file or camera, optional link to one of the patient's visits. Reports show on the doctor's consultation Reports tab and history page. |
+| Doctor summary | Decided 5 Nov 2026. The Me tab shows, for today, this week (from Monday) and this month: patients seen (completed visits) and the doctor's own gross fee, discounts and net. Figures come from Firestore aggregate queries (one read per period). Clinic-wide money, other doctors and the doctor's share stay Admin only. |
 
 ---
 
@@ -76,6 +87,7 @@ Reception runs on the **web** at the front desk and must keep working **offline*
 | Give discount (reason required) | ✓ | | ✓ |
 | Book, reschedule, cancel appointments | ✓ | | ✓ |
 | Upload patient reports | ✓ | | ✓ |
+| Hide a wrong report (soft delete, reason) | ✓ | | ✓ |
 | Print receipt | ✓ | | ✓ |
 | Sell inventory items | ✓ | | ✓ |
 | View own queue | | ✓ | ✓ |
@@ -163,6 +175,8 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 ### 5.5 Reports upload
 - Open a patient, attach a PDF or photo with a title. Optionally link to a visit.
 - Camera capture on devices that have one.
+- PDF, JPEG or PNG up to 10 MB. Photos are resized on the device before upload (longest side 1200 px, JPEG quality 80). The report record is written only after the file upload succeeds, so uploads need a connection.
+- Reception and Admin can hide a wrong upload with a reason (decided 5 Nov 2026); the file is kept.
 
 ### 5.6 Inventory sales
 - Sell items (medicines, frames, lenses, consumables) to a patient, with or without a visit. Frames and lenses are separate line items. For a lens line, reception picks lens type and power; the app suggests the power from the patient's latest eye prescription. Stock decreases for that exact power.
@@ -196,6 +210,7 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 ### 6.1 Today's queue
 - Live list of waiting patients for this doctor only, in token order.
 - Tap to open. Status moves to in progress, then completed when the doctor finishes.
+- In-progress visits sit at the top, waiting ones below in token order, and today's completed visits collapse under "Done today". The doctor can also move status from the list (Start / Complete), the same as reception does from the board.
 
 ### 6.2 Patient history
 - All past visits across every department and doctor, newest first.
@@ -208,15 +223,18 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - Eye form: right and left eye SPH, CYL, AXIS, ADD, VA. Diagnosis and advice as free text.
 - Homeo form: rows of medicine, potency, dosage, duration. Diagnosis and advice as free text.
 - Print prescription on A4 with clinic header.
-- Set a follow-up date. This creates an appointment suggestion visible to reception and, if Admin has enabled it, a pending WhatsApp reminder.
+- Set a follow-up date with quick chips (3 days, 1 week, 2 weeks, 1 month) or a calendar picker. This creates an appointment (`source: followUp`, no time) visible to reception from Phase 6 and, if Admin has enabled it, a pending WhatsApp reminder. Changing the date moves the same appointment; clearing it cancels it.
+- Save stores the prescription and leaves the visit in progress; Complete stores it and completes the visit in one write. Completing without a prescription needs a confirmation. The assigned doctor can edit the prescription until the end of that Karachi day; afterwards it is read-only (decided 5 Nov 2026).
+- Departments without a structured form (any department other than Eye and Homeopathy) get diagnosis and advice only.
 
 ### 6.4 Operations
 - From a checkup, schedule an operation: date, surgeon, notes.
 - Pre-op checklist: Admin and doctors maintain the default list per operation type. The list is copied onto each operation; the doctor ticks items and can add patient-specific items. Operation cannot be marked done until the checklist is complete, unless the doctor overrides with a reason.
 - Post-op follow-ups: each operation type has default days after surgery, e.g. day 1, day 7, day 30, set by Admin or doctors. When an operation is scheduled the days are copied to the patient, and reception, doctor, or Admin can change them for that patient at any time. Follow-ups appear in reception's appointment list and, if enabled, as pending WhatsApp reminders.
+- Decided 5 Nov 2026: the surgeon is any active doctor of the department (the scheduling doctor preselected); the surgery day itself is booked as an appointment; a token issued with that operation type on or after the date links the visit to the operation. Doctors edit their department's operation-type defaults from the Me tab. Reception's own entry point for changing a patient's post-op days arrives with the appointments screens in Phase 6.
 
 ### 6.5 Personal summary
-- Doctor sees own patients seen today, this week, this month.
+- Doctor sees own patients seen today, this week (from Monday), this month: completed visits, plus own gross fee, discounts and net for each period (decided 5 Nov 2026). Needs a connection; the figures are server aggregates.
 - Doctor sees the fee, discount, discount reason, and net paid on every visit they open.
 - Clinic-wide money figures (other doctors, expenses, profit) stay Admin only.
 

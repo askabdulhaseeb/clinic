@@ -182,6 +182,22 @@ class CatalogRepositoryImpl implements CatalogRepository {
     });
   });
 
+  @override
+  Future<void> updateVisitTypeDefaults(
+    String visitTypeId, {
+    required List<ChecklistItem> checklist,
+    required List<int> postOpDays,
+  }) => _guard(() async {
+    await _visitTypes.doc(visitTypeId).update({
+      'defaultPreOpChecklist': [
+        for (final c in checklist) {'id': c.id, 'label': c.label},
+      ],
+      'defaultPostOpDays': List<int>.of(postOpDays),
+      'updatedAt': FieldValue.serverTimestamp(),
+      'updatedBy': _uid,
+    });
+  });
+
   Future<T> _guard<T>(Future<T> Function() body) async {
     try {
       return await body();

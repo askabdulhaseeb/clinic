@@ -1,7 +1,7 @@
 rules_version = '2';
 
 // Storage layout: FIREBASE_ARCHITECTURE.md §7. Paths are opened per phase:
-// Phase 2 the clinic logo, Phase 5 patient reports. Everything else denied.
+// Phase 2 the clinic logo, Phase 5B patient reports. Everything else denied.
 service firebase.storage {
   match /b/{bucket}/o {
     function isSignedIn() {
@@ -20,6 +20,23 @@ service firebase.storage {
         && request.resource != null
         && request.resource.contentType.matches('image/.*')
         && request.resource.size <= 2 * 1024 * 1024;
+    }
+
+    function isReceptionOrAdmin() {
+      return isSignedIn()
+        && (('reception' in request.auth.token.get('roles', []))
+            || ('admin' in request.auth.token.get('roles', [])));
+    }
+
+    // Patient reports (Phase 5B): PDF or photo, 10 MB cap, uploaded by
+    // reception or Admin, read by any staff, never deleted from the client.
+    match /patients/{patientId}/reports/{file} {
+      allow read: if isSignedIn();
+      allow create, update: if isReceptionOrAdmin()
+        && request.resource != null
+        && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png']
+        && request.resource.size <= 10 * 1024 * 1024;
+      allow delete: if false;
     }
 
     match /{allPaths=**} {

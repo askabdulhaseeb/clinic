@@ -34,4 +34,12 @@ abstract class CatalogRepository {
   Future<String> createVisitType(VisitType visitType);
 
   Future<void> updateVisitType(VisitType visitType);
+
+  /// Doctor edit of an operation type's defaults (Phase 5B): only the
+  /// checklist and post-op days change.
+  Future<void> updateVisitTypeDefaults(
+    String visitTypeId, {
+    required List<ChecklistItem> checklist,
+    required List<int> postOpDays,
+  });
 }

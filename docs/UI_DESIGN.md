@@ -1,6 +1,6 @@
 # UI Design
 
-**Status:** Draft v4 — 4 Nov 2026 (Phase 4 screens: new visit form, token dialog, visits list, queue board, shift summary, visit detail, sync badge). v3 — 4 Nov 2026 (Phase 3 screens: patient search, registration form, patient page, family dialogs). v2 — 3 Nov 2026 (Phase 2 screens: catalog tabs, forms, settings, first-run setup). Companion to [FEATURES.md](FEATURES.md) (what each screen does) and [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) (theme, packages, phases). This document fixes how screens are laid out and how users move between them. Screens are still reviewed one by one by the owner as they are built; this document is the starting point, not a pixel spec.
+**Status:** Draft v6 — 5 Nov 2026 (Phase 5B screens: report upload dialog and Reports tab, schedule-operation sheet, operations list and detail, Me-tab defaults editor, operation link on the new-visit form). v5 — 5 Nov 2026 (Phase 5A screens: doctor queue, consultation with prescription forms and follow-up, prescription PDF, doctor patient history, personal summary). v4 — 4 Nov 2026 (Phase 4 screens: new visit form, token dialog, visits list, queue board, shift summary, visit detail, sync badge). v3 — 4 Nov 2026 (Phase 3 screens: patient search, registration form, patient page, family dialogs). v2 — 3 Nov 2026 (Phase 2 screens: catalog tabs, forms, settings, first-run setup). Companion to [FEATURES.md](FEATURES.md) (what each screen does) and [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) (theme, packages, phases). This document fixes how screens are laid out and how users move between them. Screens are still reviewed one by one by the owner as they are built; this document is the starting point, not a pixel spec.
 
 ---
 
@@ -121,14 +121,14 @@ Bottom tabs: Queue, Patients, Operations, Me. Sidebar on desktop uses the same f
 | Path | Screen | Phase |
 |---|---|---|
 | `/doctor` | redirects to `/doctor/queue` | 5 |
-| `/doctor/queue` | My queue today, in token order | 5 |
-| `/doctor/visits/:id` | Consultation: patient header, history tab, prescription tab, reports tab, operation tab. Complete button | 5 |
-| `/doctor/patients` | Patient search (read-only) | 5 |
-| `/doctor/patients/:id` | Patient history across departments | 5 |
-| `/doctor/operations` | My operations: scheduled, done | 5 |
-| `/doctor/operations/:id` | Operation detail: checklist, post-op days, follow-up appointments | 5 |
+| `/doctor/queue` | My queue today, in token order | 5A |
+| `/doctor/visits/:id` | Consultation: patient header, prescription tab, history tab, reports tab (5B), operation tab (5B). Save, Print Rx, Complete | 5A |
+| `/doctor/patients` | Patient search (read-only) | 5A |
+| `/doctor/patients/:id` | Patient history across departments | 5A |
+| `/doctor/operations` | My operations: scheduled, done | 5B |
+| `/doctor/operations/:id` | Operation detail: checklist, post-op days, follow-up appointments | 5B |
 | `/doctor/appointments` | My upcoming appointments (desktop sidebar, inside Me on phones) | 6 |
-| `/doctor/me` | Personal summary: today, week, month; defaults for my operation types | 5 |
+| `/doctor/me` | Personal summary: today, week, month (5A); defaults for my operation types (5B) | 5A / 5B |
 
 ### 3.4 Admin (`/admin`)
 
@@ -187,7 +187,7 @@ Payment      (Cash) (Bank) (JazzCash) (Easypaisa)   Ref [        ]
                                        [ Save and print ]  [ Save ]
 ```
 
-The fee is read-only; when the doctor has no fee for the chosen type the row says "No fee set — ask Admin" and Save stays disabled. Discount reason is a dropdown of presets plus Other, which reveals a text field. Payment reference appears for bank, JazzCash and Easypaisa. The doctor row shows "Waiting now: N" from today's visits.
+The fee is read-only; when the doctor has no fee for the chosen type the row says "No fee set — ask Admin" and Save stays disabled. Phase 5B: choosing an operation visit type for a patient with a scheduled operation of that type shows `visit-operation-link` ("Operation scheduled for 12 Nov 2026") and the saved visit carries `operationId`. Discount reason is a dropdown of presets plus Other, which reveals a text field. Payment reference appears for bank, JazzCash and Easypaisa. The doctor row shows "Waiting now: N" from today's visits.
 
 After save: dialog with the token in large type (`E-12`), patient and doctor line, amounts, copy stepper (defaults to Settings), Print and Done. Done goes to the visit detail page; the dialog also has "New visit for another patient" back to search.
 
@@ -202,6 +202,8 @@ One column per doctor with a visit today (toggle "Show all doctors" adds active 
 
 ### 4.5 Doctor queue (Doctor)
 List of waiting visits in token order with a large token chip, patient name, age and gender, visit type. Tapping opens the consultation and moves the visit to in progress. Completed visits of today collapse under a "Done today" section.
+
+Built 5 Nov 2026 (Phase 5A): header line "N waiting · M done"; in-progress rows first with a Complete button, waiting rows with Start, both keyed `doctor-start-<id>` / `doctor-complete-<id>`; rows keyed `doctor-row-<id>` open `/doctor/visits/:id`. Empty state "No patients yet today". A multi-role user sees only the visits of their own doctor record.
 
 ### 4.6 Consultation (Doctor)
 Patient header: name, age, gender, patient ID, phone, token, visit type, fee / discount / net. Tabs: Prescription, History, Reports, Operation. Bottom bar: Follow-up date, Print Rx, Complete.
@@ -231,10 +233,29 @@ Diagnosis  [                                              ]
 Advice     [                                              ]
 ```
 
-Medicine field suggests from inventory items of category medicine, free text allowed.
+Medicine field suggests from inventory items of category medicine, free text allowed (suggestions arrive with inventory in Phase 7; 5A is free text).
+
+Built 5 Nov 2026 (Phase 5A): the header card shows `PatientHeader`, token chip, visit type and `Fee / Discount (reason) / Net`. Departments other than Eye and Homeopathy show only Diagnosis and Advice. Eye cells are keyed `rx-od-sph` … `rx-os-va`; Homeo rows `rx-homeo-<i>-medicine|potency|dosage|duration` with `rx-homeo-add` and `rx-homeo-remove-<i>`; `rx-diagnosis`, `rx-advice`. Follow-up row: chips `rx-follow-3d`, `rx-follow-1w`, `rx-follow-2w`, `rx-follow-1m`, a date button `rx-follow-pick` and a clear button `rx-follow-clear`, showing the resulting date. Bottom bar: `rx-save` (Save), `rx-print` (Print Rx, enabled once saved), `rx-complete` (Complete; confirm dialog `rx-complete-confirm` when nothing is saved). After the Karachi day of the prescription the form is read-only with a "Locked" chip and only Print stays. Validation messages appear under the field; Save stays enabled and shows the first problem in a snackbar. The History tab lists the patient's other visits with their prescriptions (same rows as §4.6a).
+
+### 4.6a Patient history (Doctor)
+`/doctor/patients/:id`: `PageHeader` with the patient name, `PatientHeader` card, then the visits newest first as `ExpansionTile`s keyed `history-visit-<id>`: date, token chip, doctor, type, status chip; expanded shows the prescription (Eye table or Homeo rows, diagnosis, advice, follow-up) or "No prescription". Reports and Operations tabs arrive in 5B. The doctor's patient search (`/doctor/patients`) is the reception search without New patient, Add patient, New visit or Book.
+
+### 4.6b Personal summary (Doctor)
+`/doctor/me`: three cards Today, This week, This month keyed `me-today`, `me-week`, `me-month`, each with Patients seen, Fees, Discounts, Net (`Rs`). A Refresh button `me-refresh`; an offline or failed load shows the error under the cards. Operation-type defaults are added here in 5B.
 
 ### 4.7 Operation detail (Doctor)
 Header: patient, operation type, surgeon, scheduled date picker, status chip. Checklist as checkboxes with who and when on tick; "Add item" at the bottom. Post-op days as chips (`Day 1`, `Day 7`, `Day 30`) with add and remove; changing them regenerates appointments after a confirm. "Mark done" disabled until all items are ticked, with an "Override with reason" link.
+
+Built 5 Nov 2026 (Phase 5B). `/doctor/operations`: two tabs Scheduled and Done (cancelled under Done), rows `op-row-<id>` with date, patient, type, surgeon and an operation status chip. Detail keys: `op-date-pick` (date change confirms "Move the follow-ups too?"), `op-check-<itemId>` checkboxes showing "by <name>, <time>" when ticked, `op-add-item-input` + `op-add-item`, `op-day-<n>` chips, `op-day-input` + `op-day-add` (confirm dialog `op-day-confirm` before appointments are regenerated), and a fixed bottom bar (so it stays reachable on long pages) with `op-cancel` → `op-cancel-reason` + `op-cancel-confirm`, `op-override` → dialog `op-override-reason` + `op-override-confirm`, and `op-done` (disabled until every item is ticked). Done and cancelled operations are read-only and have no bar.
+
+### 4.7a Schedule operation (Doctor, consultation Operation tab)
+When the visit has no operation: button `op-schedule` opens a sheet with `op-type` (operation types of the department), `op-surgeon` (active doctors of the department, self preselected), `op-date` (picker, defaults to tomorrow), `op-notes`, `op-save`. Saving shows the operation summary on the tab with `op-open` to the detail page. When the visit is linked (`operationId`) or the patient has a scheduled operation, the tab shows that record instead.
+
+### 4.7b Reports (Reception upload, Doctor view)
+Patient page Reports tab: list rows `report-row-<id>` (title, date, uploader, size, visit token when linked) with `report-open-<id>` (new tab) and, for reception and Admin, `report-delete-<id>` → dialog `report-delete-reason` + `report-delete-confirm`. Button `reports-upload` opens the dialog: `report-title`, `report-pick-file`, `report-pick-camera` (devices with a camera), `report-visit` dropdown of the patient's visits, `report-save`; a progress bar while uploading; errors inline. The same list (without upload and delete) sits on the doctor's consultation Reports tab and history page.
+
+### 4.6c Me tab defaults (Doctor)
+Below the period cards, a card per operation type of the doctor's department (`defaults-type-<id>` expansion): checklist items with `defaults-check-remove-<typeId>-<itemId>`, `defaults-check-input-<typeId>` + `defaults-check-add-<typeId>`, post-op day chips `defaults-day-<typeId>-<n>`, `defaults-day-input-<typeId>` + `defaults-day-add-<typeId>`, and `defaults-save-<typeId>`. Changes affect future operations only.
 
 ### 4.8 Admin dashboard
 Range picker (Today, This week, This month, Custom). Row of KPI tiles: Revenue, Visits, New patients, Discounts, Expenses, Net profit. Below: revenue by department and by doctor (bar), by payment method (stacked bar), visits per day (line). Low-stock list card. Everything reads `dailySummaries`.

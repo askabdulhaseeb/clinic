@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -12,6 +13,8 @@ import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/page_header.dart';
 import '../../../auth/domain/entities/user_role.dart';
 import '../../../catalog/presentation/widgets/action_error_listener.dart';
+import '../../../reports/presentation/report_picker.dart';
+import '../../../reports/presentation/widgets/reports_tab.dart';
 import '../../../settings/domain/entities/clinic_settings.dart';
 import '../../../settings/presentation/viewmodels/settings_controller.dart';
 import '../../../visits/domain/repositories/visits_repository.dart';
@@ -115,7 +118,7 @@ class PatientDetailView extends StatelessWidget {
     final wide = Breakpoints.isExpanded(context);
 
     final family = _FamilyCard(vm: vm, role: role, patient: patient);
-    final tabs = _Tabs(vm: vm, role: role);
+    final tabs = _Tabs(vm: vm, role: role, patient: patient, openUrl: _open);
 
     return Scaffold(
       body: Column(
@@ -367,10 +370,17 @@ class _FamilyCard extends StatelessWidget {
 /// Visits (Phase 4; newest first, row opens the visit for a reprint),
 /// Reports and Appointments (placeholders until Phases 5 and 6).
 class _Tabs extends StatelessWidget {
-  const _Tabs({required this.vm, required this.role});
+  const _Tabs({
+    required this.vm,
+    required this.role,
+    required this.patient,
+    required this.openUrl,
+  });
 
   final PatientDetailViewModel vm;
   final UserRole role;
+  final Patient patient;
+  final Future<void> Function(Uri uri) openUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -412,9 +422,12 @@ class _Tabs extends StatelessWidget {
                             context.go(AppRoutes.visitFor(role, visits[i].id)),
                       ),
                     ),
-                  const _ComingSoon(
-                    icon: Icons.description_outlined,
-                    text: 'Reports — coming in Phase 5',
+                  ReportsTab(
+                    patient: patient,
+                    visits: visits,
+                    canManage: true,
+                    cameraPicker: kIsWeb ? null : pickReportWithCamera,
+                    openUrl: openUrl,
                   ),
                   const _ComingSoon(
                     icon: Icons.event_outlined,

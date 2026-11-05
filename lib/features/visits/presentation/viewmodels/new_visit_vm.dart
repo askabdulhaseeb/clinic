@@ -9,6 +9,8 @@ import '../../../catalog/domain/entities/doctor.dart';
 import '../../../catalog/domain/entities/visit_type.dart';
 import '../../../catalog/domain/repositories/catalog_repository.dart';
 import '../../../catalog/presentation/viewmodels/catalog_data.dart';
+import '../../../operations/domain/entities/operation.dart';
+import '../../../operations/domain/repositories/operations_repository.dart';
 import '../../../patients/domain/entities/patient.dart';
 import '../../../patients/domain/repositories/patients_repository.dart';
 import '../../../settings/domain/entities/clinic_settings.dart';
@@ -28,6 +30,7 @@ class NewVisitViewModel extends ChangeNotifier with CatalogData {
     required this.catalogRepository,
     required this.patientId,
     required int defaultCopies,
+    OperationsRepository? operationsRepository,
     int Function(String doctorId)? waitingCount,
     DateTime Function()? clock,
   }) : _patients = patientsRepository,
@@ -42,6 +45,13 @@ class NewVisitViewModel extends ChangeNotifier with CatalogData {
     _patientSub = _patients
         .watchPatient(patientId)
         .listen(_onPatient, onError: _onError);
+    // Scheduled operations, to link an operation token (decided 5 Nov 2026).
+    _operationsSub = operationsRepository
+        ?.watchPatientOperations(patientId)
+        .listen((list) {
+          _operations = list;
+          notifyListeners();
+        }, onError: (Object _) {});
   }
 
   @override
@@ -53,6 +63,8 @@ class NewVisitViewModel extends ChangeNotifier with CatalogData {
   final String patientId;
 
   StreamSubscription<Patient?>? _patientSub;
+  StreamSubscription<List<Operation>>? _operationsSub;
+  List<Operation> _operations = const [];
   Patient? _patient;
   bool _patientLoading = true;
   bool _notFound = false;
@@ -127,6 +139,17 @@ class NewVisitViewModel extends ChangeNotifier with CatalogData {
             .toList(growable: false);
 
   int get waitingNow => _doctorId == null ? 0 : _waitingCount(_doctorId!);
+
+  /// The patient's scheduled operation of the chosen operation type, which
+  /// the saved visit will carry as `operationId` (UI_DESIGN §4.3).
+  Operation? get linkedOperation {
+    final t = visitType;
+    if (t == null || !t.isOperation) return null;
+    for (final o in _operations) {
+      if (o.isOpen && o.visitTypeId == t.id) return o;
+    }
+    return null;
+  }
 
   /// Fee from the doctor's schedule; null while unchosen or when no fee is
   /// set for that pair (decided 4 Nov 2026: read-only, blocks save).
@@ -262,6 +285,7 @@ class NewVisitViewModel extends ChangeNotifier with CatalogData {
           paymentMethod: _paymentMethod,
           paymentRef: _paymentRef.trim(),
           receiptCopies: _copies,
+          operationId: linkedOperation?.id,
         ),
       );
       _saved = visit;
@@ -324,6 +348,7 @@ class NewVisitViewModel extends ChangeNotifier with CatalogData {
   void dispose() {
     _disposed = true;
     _patientSub?.cancel();
+    _operationsSub?.cancel();
     cancelCatalog();
     super.dispose();
   }

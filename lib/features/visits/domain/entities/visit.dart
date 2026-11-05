@@ -73,6 +73,7 @@ class Visit {
     this.startedAt,
     this.completedAt,
     this.hasPrescription = false,
+    this.operationId,
     this.deleted = false,
     this.branchId = 'main',
   });
@@ -115,6 +116,9 @@ class Visit {
   final DateTime? startedAt;
   final DateTime? completedAt;
   final bool hasPrescription;
+
+  /// The scheduled operation this token belongs to (Phase 5B).
+  final String? operationId;
   final bool deleted;
   final String branchId;
 
@@ -158,6 +162,7 @@ class Visit {
     startedAt: startedAt ?? this.startedAt,
     completedAt: completedAt ?? this.completedAt,
     hasPrescription: hasPrescription,
+    operationId: operationId,
     deleted: deleted ?? this.deleted,
     branchId: branchId,
   );
@@ -196,6 +201,7 @@ class Visit {
       other.startedAt == startedAt &&
       other.completedAt == completedAt &&
       other.hasPrescription == hasPrescription &&
+      other.operationId == operationId &&
       other.deleted == deleted &&
       other.branchId == branchId;
 

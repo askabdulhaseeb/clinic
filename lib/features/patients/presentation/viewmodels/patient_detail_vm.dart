@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/utils/karachi_date.dart';
 import '../../../../core/utils/phone.dart';
+import '../../../prescriptions/domain/entities/prescription.dart';
+import '../../../prescriptions/domain/repositories/prescriptions_repository.dart';
 import '../../../visits/domain/entities/visit.dart';
 import '../../../visits/domain/repositories/visits_repository.dart';
 import '../../domain/entities/family.dart';
@@ -20,6 +22,7 @@ class PatientDetailViewModel extends ChangeNotifier {
     required PatientsRepository repository,
     required this.patientId,
     VisitsRepository? visitsRepository,
+    PrescriptionsRepository? prescriptionsRepository,
     DateTime Function()? clock,
   }) : _repo = repository,
        _clock = clock ?? DateTime.now {
@@ -31,6 +34,13 @@ class PatientDetailViewModel extends ChangeNotifier {
       _visits = v;
       notifyListeners();
     }, onError: (Object _) {});
+    // Prescriptions for the doctor's history page (Phase 5A).
+    _rxSub = prescriptionsRepository
+        ?.watchPatientPrescriptions(patientId)
+        .listen((list) {
+          _prescriptions = {for (final p in list) p.visitId: p};
+          notifyListeners();
+        }, onError: (Object _) {});
   }
 
   final PatientsRepository _repo;
@@ -41,8 +51,10 @@ class PatientDetailViewModel extends ChangeNotifier {
   StreamSubscription<Family?>? _familySub;
   StreamSubscription<List<Patient>>? _membersSub;
   StreamSubscription<List<Visit>>? _visitsSub;
+  StreamSubscription<List<Prescription>>? _rxSub;
   String? _familyId;
   List<Visit> _visits = const [];
+  Map<String, Prescription> _prescriptions = const {};
   Patient? _patient;
   Family? _family;
   List<Patient> _members = const [];
@@ -58,6 +70,9 @@ class PatientDetailViewModel extends ChangeNotifier {
 
   /// This patient's visits, newest first.
   List<Visit> get visits => _visits;
+
+  /// The prescription written on [visitId], when one exists.
+  Prescription? prescriptionFor(String visitId) => _prescriptions[visitId];
   bool get loading => _loading;
   bool get notFound => _notFound;
   bool get busy => _busy;
@@ -225,6 +240,7 @@ class PatientDetailViewModel extends ChangeNotifier {
     _familySub?.cancel();
     _membersSub?.cancel();
     _visitsSub?.cancel();
+    _rxSub?.cancel();
     super.dispose();
   }
 }

@@ -121,7 +121,7 @@ void main() {
     await tester.tap(find.byKey(const Key('role-switcher')));
     await waitFor(tester, find.widgetWithText(MenuItemButton, 'Doctor'));
     await tester.tap(find.widgetWithText(MenuItemButton, 'Doctor'));
-    await waitFor(tester, find.text('Queue — coming soon'));
+    await waitFor(tester, find.byKey(const Key('doctor-queue')));
     await signOut(tester);
   }, timeout: testTimeout);
 }

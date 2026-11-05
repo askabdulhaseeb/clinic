@@ -9,13 +9,19 @@ import '../../features/auth/presentation/viewmodels/session_controller.dart';
 import '../../features/catalog/presentation/screens/catalog_screen.dart';
 import '../../features/catalog/presentation/screens/doctor_form_screen.dart';
 import '../../features/catalog/presentation/screens/visit_type_form_screen.dart';
+import '../../features/operations/presentation/screens/doctor_operations_screen.dart';
+import '../../features/operations/presentation/screens/operation_detail_screen.dart';
 import '../../features/patients/presentation/screens/patient_detail_screen.dart';
 import '../../features/patients/presentation/screens/patient_form_screen.dart';
+import '../../features/patients/presentation/screens/patient_history_screen.dart';
 import '../../features/patients/presentation/screens/patient_search_screen.dart';
+import '../../features/prescriptions/presentation/screens/consultation_screen.dart';
 import '../../features/settings/presentation/screens/initial_setup_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/settings/presentation/viewmodels/settings_controller.dart';
 import '../../features/users/presentation/screens/users_screen.dart';
+import '../../features/visits/presentation/screens/doctor_queue_screen.dart';
+import '../../features/visits/presentation/screens/doctor_summary_screen.dart';
 import '../../features/visits/presentation/screens/new_visit_screen.dart';
 import '../../features/visits/presentation/screens/queue_screen.dart';
 import '../../features/visits/presentation/screens/summary_screen.dart';
@@ -146,6 +152,7 @@ ShellRoute _roleShell(UserRole role) {
         ..._patientRoutes(role),
         ..._visitRoutes(role),
       ],
+      if (role == UserRole.doctor) ..._doctorRoutes(),
     ],
   );
 }
@@ -197,6 +204,25 @@ List<GoRoute> _visitRoutes(UserRole role) {
     ),
   ];
 }
+
+/// Doctor pages below the tabs (Phase 5A): consultation and patient history.
+List<GoRoute> _doctorRoutes() => [
+  GoRoute(
+    path: AppRoutes.doctorVisitPattern,
+    builder: (_, state) =>
+        ConsultationScreen(visitId: state.pathParameters['id']!),
+  ),
+  GoRoute(
+    path: AppRoutes.doctorPatientPattern,
+    builder: (_, state) =>
+        PatientHistoryScreen(patientId: state.pathParameters['id']!),
+  ),
+  GoRoute(
+    path: AppRoutes.doctorOperationPattern,
+    builder: (_, state) =>
+        OperationDetailScreen(operationId: state.pathParameters['id']!),
+  ),
+];
 
 /// Admin pages below the sidebar destinations (Phase 2: catalog, setup).
 List<GoRoute> _adminRoutes() => [
@@ -265,6 +291,14 @@ Widget _screenFor(String path, String label) {
       return const QueueScreen(role: UserRole.reception);
     case AppRoutes.receptionSummary:
       return const SummaryScreen();
+    case AppRoutes.doctorQueue:
+      return const DoctorQueueScreen();
+    case AppRoutes.doctorPatients:
+      return const PatientSearchScreen(role: UserRole.doctor);
+    case AppRoutes.doctorOperations:
+      return const DoctorOperationsScreen();
+    case AppRoutes.doctorMe:
+      return const DoctorSummaryScreen();
     default:
       return PlaceholderScreen(title: label, embedded: true);
   }

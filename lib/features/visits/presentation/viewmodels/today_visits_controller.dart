@@ -23,7 +23,9 @@ enum SyncState {
 /// Holds the one listener on today's visits for reception and admin
 /// sessions (FIREBASE_ARCHITECTURE §9). The visits list, queue board,
 /// shift summary, sync badge and the "waiting now" count all read from it.
-/// Call [checkDate] periodically so the listener follows the Karachi day.
+/// A doctor-only session listens to its own visits instead (Phase 5A), which
+/// feeds the doctor queue. Call [checkDate] periodically so the listener
+/// follows the Karachi day.
 class TodayVisitsController extends ChangeNotifier {
   TodayVisitsController({
     required VisitsRepository repository,
@@ -45,12 +47,16 @@ class TodayVisitsController extends ChangeNotifier {
   Timer? _timer;
   StreamSubscription<DayVisits>? _sub;
   String? _date;
+  String? _scopedDoctorId;
   List<Visit> _visits = const [];
   int _pendingWrites = 0;
   bool _fromCache = false;
   String? _error;
 
   bool get listening => _sub != null;
+
+  /// The doctor the listener is limited to; null for a whole-day listener.
+  String? get scopedDoctorId => _scopedDoctorId;
   List<Visit> get visits => _visits;
   int get pendingWrites => _pendingWrites;
   String? get error => _error;
@@ -70,14 +76,27 @@ class TodayVisitsController extends ChangeNotifier {
 
   bool get _wanted {
     final user = _session.user;
-    return _session.isSignedIn &&
-        user != null &&
-        (user.hasRole(UserRole.reception) || user.hasRole(UserRole.admin));
+    if (!_session.isSignedIn || user == null) return false;
+    if (user.hasRole(UserRole.reception) || user.hasRole(UserRole.admin)) {
+      return true;
+    }
+    return user.hasRole(UserRole.doctor) && user.doctorId != null;
+  }
+
+  /// Null for reception or admin (whole day), the doctor's ID otherwise.
+  String? get _wantedScope {
+    final user = _session.user;
+    if (user == null) return null;
+    if (user.hasRole(UserRole.reception) || user.hasRole(UserRole.admin)) {
+      return null;
+    }
+    return user.doctorId;
   }
 
   void _onSessionChanged() {
     final wanted = _wanted;
-    if (wanted == listening) return;
+    final scope = _wantedScope;
+    if (wanted == listening && (!wanted || scope == _scopedDoctorId)) return;
     if (!wanted) {
       _stop();
       _visits = const [];
@@ -85,9 +104,12 @@ class TodayVisitsController extends ChangeNotifier {
       _fromCache = false;
       _error = null;
       _date = null;
+      _scopedDoctorId = null;
       notifyListeners();
       return;
     }
+    if (listening) _stop(); // role change: re-scope the listener
+    _scopedDoctorId = scope;
     _subscribe(KarachiDate.today(_clock()));
   }
 
@@ -105,21 +127,23 @@ class TodayVisitsController extends ChangeNotifier {
 
   void _subscribe(String date) {
     _date = date;
-    _sub = _repo
-        .watchVisitsOn(date)
-        .listen(
-          (day) {
-            _visits = day.visits;
-            _pendingWrites = day.pendingWrites;
-            _fromCache = day.fromCache;
-            _error = null;
-            notifyListeners();
-          },
-          onError: (Object e) {
-            _error = e is AppException ? e.message : e.toString();
-            notifyListeners();
-          },
-        );
+    final scope = _scopedDoctorId;
+    final stream = scope == null
+        ? _repo.watchVisitsOn(date)
+        : _repo.watchVisitsOn(date, doctorId: scope);
+    _sub = stream.listen(
+      (day) {
+        _visits = day.visits;
+        _pendingWrites = day.pendingWrites;
+        _fromCache = day.fromCache;
+        _error = null;
+        notifyListeners();
+      },
+      onError: (Object e) {
+        _error = e is AppException ? e.message : e.toString();
+        notifyListeners();
+      },
+    );
   }
 
   void _stop() {

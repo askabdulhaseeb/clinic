@@ -117,6 +117,20 @@ const VISIT_TYPES = [
   { id: "eye-eye-test", departmentId: "eye", name: "Eye Test", isFollowUp: false, sortOrder: 3 },
   { id: "homeo-checkup", departmentId: "homeo", name: "Checkup", isFollowUp: false, sortOrder: 1 },
   { id: "homeo-follow-up", departmentId: "homeo", name: "Follow-up", isFollowUp: true, sortOrder: 2 },
+  // Phase 5B: one operation type with defaults, so the doctor flow can schedule.
+  {
+    id: "eye-cataract",
+    departmentId: "eye",
+    name: "Cataract Surgery",
+    isFollowUp: false,
+    isOperation: true,
+    sortOrder: 4,
+    checklist: [
+      { id: "seed-c1", label: "Blood sugar" },
+      { id: "seed-c2", label: "Consent signed" },
+    ],
+    postOpDays: [1, 7, 30],
+  },
 ];
 
 async function seedCatalog() {
@@ -134,12 +148,12 @@ async function seedCatalog() {
       {
         departmentId: v.departmentId,
         name: v.name,
-        isOperation: false,
+        isOperation: v.isOperation ?? false,
         isFollowUp: v.isFollowUp,
         sortOrder: v.sortOrder,
         active: true,
-        defaultPreOpChecklist: [],
-        defaultPostOpDays: [],
+        defaultPreOpChecklist: v.checklist ?? [],
+        defaultPostOpDays: v.postOpDays ?? [],
         ...STAMP("seed"),
       },
       { merge: true }
@@ -156,7 +170,7 @@ async function seedCatalog() {
       salary: 50000,
       sharePercent: 10,
       shareBasis: "gross",
-      fees: { "eye-checkup": 1500, "eye-follow-up": 500, "eye-eye-test": 800 },
+      fees: { "eye-checkup": 1500, "eye-follow-up": 500, "eye-eye-test": 800, "eye-cataract": 25000 },
       active: true,
       branchId: "main",
       ...STAMP("seed"),

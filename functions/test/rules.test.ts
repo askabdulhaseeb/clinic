@@ -1,4 +1,4 @@
-// Firestore rules allow/deny matrix for Phases 1 to 4 (FIREBASE_ARCHITECTURE.md §6).
+// Firestore rules allow/deny matrix for Phases 1 to 5B (FIREBASE_ARCHITECTURE.md §6).
 // Runs against the Firestore emulator on 127.0.0.1:8080.
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -335,9 +335,9 @@ describe("master data write", () => {
 
 describe("other collections", () => {
   it("denied even for admin", async () => {
-    await assertFails(asAdmin().doc("appointments/a1").get());
-    await assertFails(asAdmin().doc("appointments/a1").set({ name: "x" }));
-    await assertFails(asAlice().collection("appointments").get());
+    await assertFails(asAdmin().doc("inventoryItems/i1").get());
+    await assertFails(asAdmin().doc("inventoryItems/i1").set({ name: "x" }));
+    await assertFails(asAlice().collection("inventoryItems").get());
     await assertFails(asAnon().doc("settings/general").get());
   });
 });
@@ -664,5 +664,375 @@ describe("visits update", () => {
   it("nobody deletes", async () => {
     await assertFails(asAdmin().doc("visits/v1").delete());
     await assertFails(asAlice().doc("visits/v1").delete());
+  });
+});
+
+// ----- Phase 5A: prescriptions (§4.12), appointments (§4.10) ---------------
+
+const DOCTOR = "doctor-uid";
+const doctor2Token = { roles: ["doctor"], doctorId: "d2", branchIds: ["main"] };
+const asDoctor2 = () => env.authenticatedContext("doctor2-uid", doctor2Token).firestore();
+
+/** Today's clinic day in Karachi (UTC+5), the only day a prescription may be edited. */
+function karachiToday(offsetDays = 0): string {
+  const d = new Date(Date.now() + 5 * 3600_000 + offsetDays * 86_400_000);
+  return d.toISOString().slice(0, 10);
+}
+
+const prescription = (by: string, date: string, extra: Record<string, unknown> = {}) => ({
+  visitId: "v1",
+  patientId: "p1",
+  patientName: "Ali Khan",
+  patientNo: "26-00001",
+  doctorId: "d1",
+  doctorName: "Dr Sara",
+  departmentId: "eye",
+  date,
+  eye: {
+    od: { sph: "-1.25", cyl: "", axis: "", add: "", va: "6/6" },
+    os: { sph: "", cyl: "", axis: "", add: "", va: "" },
+  },
+  homeo: [],
+  diagnosis: "Myopia",
+  advice: "",
+  followUpDate: null,
+  followUpAppointmentId: null,
+  branchId: "main",
+  createdAt: new Date(),
+  createdAtLocal: new Date(),
+  createdBy: by,
+  updatedAt: new Date(),
+  updatedBy: by,
+  ...extra,
+});
+
+describe("prescriptions", () => {
+  const today = karachiToday();
+  const yesterday = karachiToday(-1);
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await db.doc("visits/v1").set({ ...visit(ALICE), date: today, status: "inProgress" });
+      await db.doc("visits/v2").set({ ...visit(ALICE), doctorId: "d2", date: today });
+      await db.doc("visits/old").set({ ...visit(ALICE), date: yesterday, status: "completed" });
+      await db.doc("prescriptions/old").set(prescription(DOCTOR, yesterday, { visitId: "old" }));
+    });
+  });
+  it("any signed-in role reads; anonymous denied", async () => {
+    await assertSucceeds(asAlice().doc("prescriptions/old").get());
+    await assertSucceeds(asDoctor2().collection("prescriptions").where("patientId", "==", "p1").get());
+    await assertFails(asAnon().doc("prescriptions/old").get());
+  });
+  it("the visit's doctor creates under the visit id with the visit's date", async () => {
+    await assertSucceeds(asDoctor().doc("prescriptions/v1").set(prescription(DOCTOR, today)));
+  });
+  it("another doctor, reception, admin and anonymous cannot create", async () => {
+    await assertFails(asDoctor2().doc("prescriptions/v1").set({ ...prescription("doctor2-uid", today), doctorId: "d2" }));
+    await assertFails(asDoctor2().doc("prescriptions/v1").set(prescription("doctor2-uid", today)));
+    await assertFails(asAlice().doc("prescriptions/v1").set(prescription(ALICE, today)));
+    await assertFails(asAdmin().doc("prescriptions/v1").set(prescription(ADMIN, today)));
+    await assertFails(asAnon().doc("prescriptions/v1").set(prescription("anon", today)));
+  });
+  it("shape: id must match visitId, date the visit, doctorId the claim, createdBy the caller", async () => {
+    await assertFails(asDoctor().doc("prescriptions/v1").set(prescription(DOCTOR, today, { visitId: "v2" })));
+    await assertFails(asDoctor().doc("prescriptions/v1").set(prescription(DOCTOR, yesterday)));
+    await assertFails(asDoctor().doc("prescriptions/v1").set(prescription(DOCTOR, today, { doctorId: "d2" })));
+    await assertFails(asDoctor().doc("prescriptions/v1").set(prescription(ALICE, today)));
+    await assertFails(asDoctor().doc("prescriptions/v1").set(prescription(DOCTOR, today, { branchId: "other" })));
+    await assertFails(asDoctor().doc("prescriptions/missing").set(prescription(DOCTOR, today, { visitId: "missing" })));
+  });
+  it("own doctor edits today's prescription; identity fields locked", async () => {
+    await assertSucceeds(asDoctor().doc("prescriptions/v1").set(prescription(DOCTOR, today)));
+    await assertSucceeds(
+      asDoctor().doc("prescriptions/v1").update({ diagnosis: "Astigmatism", followUpDate: karachiToday(7), updatedBy: DOCTOR })
+    );
+    await assertFails(asDoctor().doc("prescriptions/v1").update({ doctorId: "d2", updatedBy: DOCTOR }));
+    await assertFails(asDoctor().doc("prescriptions/v1").update({ date: yesterday, updatedBy: DOCTOR }));
+    await assertFails(asDoctor().doc("prescriptions/v1").update({ visitId: "v2", updatedBy: DOCTOR }));
+    await assertFails(asDoctor().doc("prescriptions/v1").update({ createdBy: ALICE, updatedBy: DOCTOR }));
+    await assertFails(asDoctor().doc("prescriptions/v1").update({ diagnosis: "x", updatedBy: ALICE }));
+    await assertFails(asDoctor2().doc("prescriptions/v1").update({ diagnosis: "x", updatedBy: "doctor2-uid" }));
+    await assertFails(asAdmin().doc("prescriptions/v1").update({ diagnosis: "x", updatedBy: ADMIN }));
+  });
+  it("yesterday's prescription is read-only even for its doctor", async () => {
+    await assertFails(asDoctor().doc("prescriptions/old").update({ diagnosis: "x", updatedBy: DOCTOR }));
+  });
+  it("nobody deletes", async () => {
+    await assertFails(asDoctor().doc("prescriptions/old").delete());
+    await assertFails(asAdmin().doc("prescriptions/old").delete());
+  });
+});
+
+const appointment = (by: string, extra: Record<string, unknown> = {}) => ({
+  patientId: "p1",
+  patientName: "Ali Khan",
+  patientNo: "26-00001",
+  phone: "03001234567",
+  doctorId: "d1",
+  doctorName: "Dr Sara",
+  departmentId: "eye",
+  date: "2026-11-12",
+  time: "",
+  source: "followUp",
+  status: "booked",
+  operationId: null,
+  prescriptionId: "v1",
+  visitId: null,
+  notes: "",
+  reminderSentAt: null,
+  reminderSentBy: null,
+  branchId: "main",
+  createdAt: new Date(),
+  createdAtLocal: new Date(),
+  createdBy: by,
+  updatedAt: new Date(),
+  updatedBy: by,
+  ...extra,
+});
+
+describe("appointments", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("appointments/a1").set(appointment(DOCTOR));
+    });
+  });
+  it("any signed-in role reads and queries; anonymous denied", async () => {
+    await assertSucceeds(asAlice().doc("appointments/a1").get());
+    await assertSucceeds(asDoctor2().collection("appointments").where("date", "==", "2026-11-12").get());
+    await assertFails(asAnon().doc("appointments/a1").get());
+  });
+  it("reception, doctor and admin create with createdBy = self", async () => {
+    await assertSucceeds(asAlice().doc("appointments/a2").set(appointment(ALICE, { source: "manual", time: "10:30" })));
+    await assertSucceeds(asDoctor().doc("appointments/a3").set(appointment(DOCTOR)));
+    await assertSucceeds(asAdmin().doc("appointments/a4").set(appointment(ADMIN)));
+    await assertFails(asAlice().doc("appointments/a5").set(appointment(BOB)));
+    await assertFails(asAnon().doc("appointments/a6").set(appointment("anon")));
+    await assertFails(asNoClaims().doc("appointments/a7").set(appointment("noclaims-uid")));
+  });
+  it("shape checks on create", async () => {
+    await assertFails(asDoctor().doc("appointments/x").set(appointment(DOCTOR, { patientId: "" })));
+    await assertFails(asDoctor().doc("appointments/x").set(appointment(DOCTOR, { patientName: "" })));
+    await assertFails(asDoctor().doc("appointments/x").set(appointment(DOCTOR, { doctorId: "" })));
+    await assertFails(asDoctor().doc("appointments/x").set(appointment(DOCTOR, { date: "" })));
+    await assertFails(asDoctor().doc("appointments/x").set(appointment(DOCTOR, { status: "done" })));
+    await assertFails(asDoctor().doc("appointments/x").set(appointment(DOCTOR, { source: "phone" })));
+    await assertFails(asDoctor().doc("appointments/x").set(appointment(DOCTOR, { branchId: "other" })));
+  });
+  it("updates by the three roles with updatedBy = self; stamps locked", async () => {
+    await assertSucceeds(asDoctor().doc("appointments/a1").update({ date: "2026-11-19", updatedBy: DOCTOR }));
+    await assertSucceeds(asAlice().doc("appointments/a1").update({ status: "cancelled", updatedBy: ALICE }));
+    await assertSucceeds(asAdmin().doc("appointments/a1").update({ notes: "Call first", updatedBy: ADMIN }));
+    await assertFails(asDoctor().doc("appointments/a1").update({ status: "bogus", updatedBy: DOCTOR }));
+    await assertFails(asDoctor().doc("appointments/a1").update({ date: "2026-11-19", updatedBy: ALICE }));
+    await assertFails(asDoctor().doc("appointments/a1").update({ createdBy: ALICE, updatedBy: DOCTOR }));
+    await assertFails(asDoctor().doc("appointments/a1").update({ branchId: "b2", updatedBy: DOCTOR }));
+    await assertFails(asNoClaims().doc("appointments/a1").update({ notes: "x", updatedBy: "noclaims-uid" }));
+  });
+  it("nobody deletes", async () => {
+    await assertFails(asAdmin().doc("appointments/a1").delete());
+    await assertFails(asDoctor().doc("appointments/a1").delete());
+  });
+});
+
+// ----- Phase 5B: reports (§4.13), operations (§4.14), visit-type defaults -----
+
+const report = (by: string, extra: Record<string, unknown> = {}) => ({
+  patientId: "p1",
+  patientName: "Ali Khan",
+  visitId: null,
+  title: "Blood test",
+  fileName: "scan.pdf",
+  storagePath: "patients/p1/reports/r1.pdf",
+  downloadUrl: "https://example.test/r1.pdf",
+  mimeType: "application/pdf",
+  sizeBytes: 2048,
+  uploadedBy: by,
+  uploadedAt: new Date(),
+  deleted: false,
+  deletedAt: null,
+  deletedBy: null,
+  deleteReason: null,
+  branchId: "main",
+  createdAt: new Date(),
+  createdAtLocal: new Date(),
+  createdBy: by,
+  updatedAt: new Date(),
+  updatedBy: by,
+  ...extra,
+});
+
+describe("reports", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("reports/r1").set(report(ALICE));
+    });
+  });
+  it("any signed-in role reads and queries by patient; anonymous denied", async () => {
+    await assertSucceeds(asDoctor().doc("reports/r1").get());
+    await assertSucceeds(asDoctor().collection("reports").where("patientId", "==", "p1").get());
+    await assertFails(asAnon().doc("reports/r1").get());
+  });
+  it("reception and admin create with createdBy = self and a valid file shape", async () => {
+    await assertSucceeds(asAlice().doc("reports/r2").set(report(ALICE)));
+    await assertSucceeds(asAdmin().doc("reports/r3").set(report(ADMIN, { mimeType: "image/jpeg", visitId: "v1" })));
+    await assertFails(asDoctor().doc("reports/r4").set(report(DOCTOR)));
+    await assertFails(asAnon().doc("reports/r4").set(report("anon")));
+    await assertFails(asAlice().doc("reports/r4").set(report(BOB)));
+    await assertFails(asAlice().doc("reports/r4").set(report(ALICE, { title: "" })));
+    await assertFails(asAlice().doc("reports/r4").set(report(ALICE, { patientId: "" })));
+    await assertFails(asAlice().doc("reports/r4").set(report(ALICE, { storagePath: "" })));
+    await assertFails(asAlice().doc("reports/r4").set(report(ALICE, { mimeType: "image/gif" })));
+    await assertFails(asAlice().doc("reports/r4").set(report(ALICE, { sizeBytes: 10 * 1024 * 1024 + 1 })));
+    await assertFails(asAlice().doc("reports/r4").set(report(ALICE, { deleted: true })));
+    await assertFails(asAlice().doc("reports/r4").set(report(ALICE, { branchId: "other" })));
+  });
+  it("reception renames or soft-deletes with a reason; file fields locked; doctor denied", async () => {
+    await assertSucceeds(asAlice().doc("reports/r1").update({ title: "CBC", updatedBy: ALICE }));
+    await assertFails(asAlice().doc("reports/r1").update({ deleted: true, updatedBy: ALICE }));
+    await assertSucceeds(
+      asAdmin().doc("reports/r1").update({ deleted: true, deleteReason: "Wrong patient", deletedBy: ADMIN, deletedAt: new Date(), updatedBy: ADMIN })
+    );
+    await assertFails(asAlice().doc("reports/r1").update({ storagePath: "x", updatedBy: ALICE }));
+    await assertFails(asAlice().doc("reports/r1").update({ downloadUrl: "x", updatedBy: ALICE }));
+    await assertFails(asAlice().doc("reports/r1").update({ patientId: "p2", updatedBy: ALICE }));
+    await assertFails(asAlice().doc("reports/r1").update({ title: "x", updatedBy: BOB }));
+    await assertFails(asDoctor().doc("reports/r1").update({ title: "x", updatedBy: DOCTOR }));
+  });
+  it("nobody deletes", async () => {
+    await assertFails(asAdmin().doc("reports/r1").delete());
+    await assertFails(asAlice().doc("reports/r1").delete());
+  });
+});
+
+const operation = (by: string, extra: Record<string, unknown> = {}) => ({
+  patientId: "p1",
+  patientName: "Ali Khan",
+  patientNo: "26-00001",
+  phone: "03001234567",
+  visitId: "v1",
+  visitTypeId: "cataract",
+  visitTypeName: "Cataract Surgery",
+  surgeonDoctorId: "d1",
+  surgeonName: "Dr Sara",
+  departmentId: "eye",
+  scheduledById: "d1",
+  scheduledDate: "2026-11-10",
+  status: "scheduled",
+  checklist: [{ id: "c1", label: "Blood sugar", done: false, doneBy: null, doneAt: null }],
+  checklistComplete: false,
+  checklistOverrideReason: null,
+  postOpDays: [1, 7, 30],
+  surgeryAppointmentId: "a0",
+  followUpAppointmentIds: ["a1", "a2", "a3"],
+  notes: "",
+  doneAt: null,
+  doneBy: null,
+  cancelReason: null,
+  branchId: "main",
+  createdAt: new Date(),
+  createdAtLocal: new Date(),
+  createdBy: by,
+  updatedAt: new Date(),
+  updatedBy: by,
+  ...extra,
+});
+
+describe("operations", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("operations/o1").set(operation(DOCTOR));
+    });
+  });
+  it("any signed-in role reads and queries by surgeon and patient; anonymous denied", async () => {
+    await assertSucceeds(asAlice().doc("operations/o1").get());
+    await assertSucceeds(asDoctor().collection("operations").where("surgeonDoctorId", "==", "d1").get());
+    await assertSucceeds(asAdmin().collection("operations").where("patientId", "==", "p1").get());
+    await assertFails(asAnon().doc("operations/o1").get());
+  });
+  it("doctor and admin create a scheduled operation with createdBy = self", async () => {
+    await assertSucceeds(asDoctor().doc("operations/o2").set(operation(DOCTOR)));
+    await assertSucceeds(asAdmin().doc("operations/o3").set(operation(ADMIN)));
+    await assertFails(asAlice().doc("operations/o4").set(operation(ALICE)));
+    await assertFails(asAnon().doc("operations/o4").set(operation("anon")));
+    await assertFails(asDoctor().doc("operations/o4").set(operation(ALICE)));
+    await assertFails(asDoctor().doc("operations/o4").set(operation(DOCTOR, { status: "done" })));
+    await assertFails(asDoctor().doc("operations/o4").set(operation(DOCTOR, { patientId: "" })));
+    await assertFails(asDoctor().doc("operations/o4").set(operation(DOCTOR, { surgeonDoctorId: "" })));
+    await assertFails(asDoctor().doc("operations/o4").set(operation(DOCTOR, { scheduledDate: "" })));
+    await assertFails(asDoctor().doc("operations/o4").set(operation(DOCTOR, { checklist: "none" })));
+    await assertFails(asDoctor().doc("operations/o4").set(operation(DOCTOR, { branchId: "other" })));
+  });
+  it("doctor and admin update; done needs the flag or an override; cancel needs a reason", async () => {
+    await assertSucceeds(
+      asDoctor().doc("operations/o1").update({
+        checklist: [{ id: "c1", label: "Blood sugar", done: true, doneBy: "Dr Sara", doneAt: new Date() }],
+        checklistComplete: true,
+        updatedBy: DOCTOR,
+      })
+    );
+    await assertSucceeds(asDoctor().doc("operations/o1").update({ scheduledDate: "2026-11-12", postOpDays: [1, 7], updatedBy: DOCTOR }));
+    await assertSucceeds(asDoctor().doc("operations/o1").update({ status: "done", doneBy: "Dr Sara", doneAt: new Date(), updatedBy: DOCTOR }));
+    await assertFails(asDoctor().doc("operations/o1").update({ status: "bogus", updatedBy: DOCTOR }));
+    await assertFails(asDoctor().doc("operations/o1").update({ createdBy: ADMIN, updatedBy: DOCTOR }));
+    await assertFails(asDoctor().doc("operations/o1").update({ branchId: "b2", updatedBy: DOCTOR }));
+    await assertFails(asDoctor().doc("operations/o1").update({ notes: "x", updatedBy: ALICE }));
+    await assertSucceeds(asAdmin().doc("operations/o1").update({ notes: "Admin note", updatedBy: ADMIN }));
+  });
+  it("done without a complete checklist needs an override reason", async () => {
+    await assertFails(asDoctor().doc("operations/o1").update({ status: "done", doneBy: "Dr Sara", doneAt: new Date(), updatedBy: DOCTOR }));
+    await assertFails(asDoctor().doc("operations/o1").update({ status: "done", checklistOverrideReason: "Seen on paper", updatedBy: DOCTOR }));
+    await assertSucceeds(
+      asDoctor().doc("operations/o1").update({ status: "done", doneBy: "Dr Sara", doneAt: new Date(), checklistOverrideReason: "Seen on paper", updatedBy: DOCTOR })
+    );
+  });
+  it("cancel needs a reason", async () => {
+    await assertFails(asDoctor().doc("operations/o1").update({ status: "cancelled", updatedBy: DOCTOR }));
+    await assertSucceeds(asDoctor().doc("operations/o1").update({ status: "cancelled", cancelReason: "Unfit", updatedBy: DOCTOR }));
+  });
+  it("reception may change only the post-op days and their appointment ids", async () => {
+    await assertSucceeds(asAlice().doc("operations/o1").update({ postOpDays: [1, 14], followUpAppointmentIds: ["x", "y"], updatedBy: ALICE }));
+    await assertFails(asAlice().doc("operations/o1").update({ scheduledDate: "2026-12-01", updatedBy: ALICE }));
+    await assertFails(asAlice().doc("operations/o1").update({ status: "done", updatedBy: ALICE }));
+    await assertFails(asAlice().doc("operations/o1").update({ notes: "x", updatedBy: ALICE }));
+    await assertFails(asAlice().doc("operations/o1").update({ postOpDays: [1], updatedBy: BOB }));
+  });
+  it("nobody deletes", async () => {
+    await assertFails(asAdmin().doc("operations/o1").delete());
+    await assertFails(asDoctor().doc("operations/o1").delete());
+  });
+});
+
+describe("visit type defaults by doctors", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await db.doc("visitTypes/cataract").set({ ...visitType(ADMIN), name: "Cataract Surgery", isOperation: true });
+      await db.doc("visitTypes/checkup").set(visitType(ADMIN));
+    });
+  });
+  it("a doctor changes the checklist and post-op days of an operation type", async () => {
+    await assertSucceeds(
+      asDoctor().doc("visitTypes/cataract").update({
+        defaultPreOpChecklist: [{ id: "c9", label: "Fasting" }],
+        defaultPostOpDays: [1, 14],
+        updatedBy: DOCTOR,
+      })
+    );
+  });
+  it("a doctor cannot touch other fields, a non-operation type, or write with the wrong updatedBy", async () => {
+    await assertFails(asDoctor().doc("visitTypes/cataract").update({ name: "x", updatedBy: DOCTOR }));
+    await assertFails(asDoctor().doc("visitTypes/cataract").update({ active: false, updatedBy: DOCTOR }));
+    await assertFails(asDoctor().doc("visitTypes/checkup").update({ defaultPostOpDays: [1], updatedBy: DOCTOR }));
+    await assertFails(asDoctor().doc("visitTypes/cataract").update({ defaultPostOpDays: [1], updatedBy: ALICE }));
+    await assertFails(asAlice().doc("visitTypes/cataract").update({ defaultPostOpDays: [1], updatedBy: ALICE }));
+    await assertFails(asDoctor().doc("visitTypes/new").set({ ...visitType(DOCTOR), isOperation: true }));
+  });
+});
+
+describe("appointments from operations", () => {
+  it("source operation is accepted", async () => {
+    await assertSucceeds(
+      asDoctor().doc("appointments/op-day").set(appointment(DOCTOR, { source: "operation", operationId: "o1", prescriptionId: null }))
+    );
   });
 });

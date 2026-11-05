@@ -1,6 +1,7 @@
 import '../../../catalog/domain/entities/doctor.dart';
 import '../../../catalog/domain/entities/visit_type.dart';
 import '../../../patients/domain/entities/patient.dart';
+import '../doctor_periods.dart';
 import '../entities/visit.dart';
 
 /// What the new-visit form hands to the repository. The entities are
@@ -16,6 +17,7 @@ class VisitInput {
     required this.paymentMethod,
     required this.paymentRef,
     required this.receiptCopies,
+    this.operationId,
   });
 
   final Patient patient;
@@ -27,6 +29,9 @@ class VisitInput {
   final PaymentMethod paymentMethod;
   final String paymentRef;
   final int receiptCopies;
+
+  /// Scheduled operation this token is for (decided 5 Nov 2026).
+  final String? operationId;
 }
 
 /// One day's visits plus the sync state of that listener, which drives the
@@ -48,12 +53,46 @@ class DayVisits {
   final bool fromCache;
 }
 
+/// Totals of completed visits over a period (doctor summary, FEATURES §6.5).
+class PeriodTotals {
+  const PeriodTotals({
+    required this.visits,
+    required this.fee,
+    required this.discount,
+    required this.net,
+  });
+
+  static const PeriodTotals zero = PeriodTotals(
+    visits: 0,
+    fee: 0,
+    discount: 0,
+    net: 0,
+  );
+
+  final int visits;
+  final int fee;
+  final int discount;
+  final int net;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PeriodTotals &&
+      other.visits == visits &&
+      other.fee == fee &&
+      other.discount == discount &&
+      other.net == net;
+
+  @override
+  int get hashCode => Object.hash(visits, fee, discount, net);
+}
+
 /// `visits` (FIREBASE_ARCHITECTURE §4.11). Reception and Admin create;
 /// reception, the assigned doctor and Admin move the status.
 abstract class VisitsRepository {
   /// Visits whose clinic [date] (`YYYY-MM-DD`) matches, with metadata
-  /// changes so pending writes and offline state are visible.
-  Stream<DayVisits> watchVisitsOn(String date);
+  /// changes so pending writes and offline state are visible. With
+  /// [doctorId] only that doctor's visits (doctor-only sessions, §9).
+  Stream<DayVisits> watchVisitsOn(String date, {String? doctorId});
 
   /// A patient's visits, newest first, soft-deleted ones removed.
   Stream<List<Visit>> watchPatientVisits(String patientId);
@@ -67,4 +106,11 @@ abstract class VisitsRepository {
 
   /// Moves a visit to [status], stamping `startedAt` or `completedAt`.
   Future<void> setStatus(String visitId, VisitStatus status);
+
+  /// Completed, living visits of [doctorId] with `date` in [range], as one
+  /// aggregate query (one billed read; server only).
+  Future<PeriodTotals> doctorTotals({
+    required String doctorId,
+    required DateRange range,
+  });
 }

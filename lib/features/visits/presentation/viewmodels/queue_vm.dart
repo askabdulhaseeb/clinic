@@ -1,11 +1,11 @@
 import 'package:flutter/foundation.dart';
 
-import '../../../../core/errors/app_exception.dart';
 import '../../../catalog/domain/entities/doctor.dart';
 import '../../../catalog/domain/repositories/catalog_repository.dart';
 import '../../../catalog/presentation/viewmodels/catalog_data.dart';
 import '../../domain/entities/visit.dart';
 import '../../domain/repositories/visits_repository.dart';
+import 'visit_status_actions.dart';
 
 /// One doctor's column on the queue board (UI_DESIGN §4.4).
 class QueueColumn {
@@ -87,61 +87,34 @@ abstract final class QueueBoard {
 /// Queue board state: the doctor catalog for names and the "show all"
 /// toggle, plus Start / Complete actions (decided 4 Nov 2026: reception may
 /// move status). Today's visits come from `TodayVisitsController`.
-class QueueViewModel extends ChangeNotifier with CatalogData {
+class QueueViewModel extends ChangeNotifier
+    with CatalogData, VisitStatusActions {
   QueueViewModel({
-    required VisitsRepository visitsRepository,
+    required this.visitsRepository,
     required this.catalogRepository,
-  }) : _visits = visitsRepository {
+  }) {
     watchCatalog(doctors: true);
   }
 
   @override
   final CatalogRepository catalogRepository;
-  final VisitsRepository _visits;
-  final _busy = <String>{};
+  @override
+  final VisitsRepository visitsRepository;
   bool _showAll = false;
-  bool _disposed = false;
-  String? _actionError;
 
   bool get showAll => _showAll;
-  String? get actionError => _actionError;
-  bool isBusy(String visitId) => _busy.contains(visitId);
 
   void toggleShowAll() {
     _showAll = !_showAll;
     notifyListeners();
   }
 
-  void clearActionError() {
-    _actionError = null;
-    notifyListeners();
-  }
-
   List<QueueColumn> columnsFor(List<Visit> visits) =>
       QueueBoard.columns(visits: visits, doctors: doctors, showAll: _showAll);
 
-  /// Waiting → in progress → completed. No-op on a completed visit.
-  Future<void> advance(Visit visit) async {
-    final next = visit.status.next;
-    if (next == null || _busy.contains(visit.id)) return;
-    _busy.add(visit.id);
-    _actionError = null;
-    notifyListeners();
-    try {
-      await _visits.setStatus(visit.id, next);
-    } on AppException catch (e) {
-      _actionError = e.message;
-    } catch (_) {
-      _actionError = 'Something went wrong. Try again.';
-    } finally {
-      _busy.remove(visit.id);
-      if (!_disposed) notifyListeners();
-    }
-  }
-
   @override
   void dispose() {
-    _disposed = true;
+    disposeStatusActions();
     cancelCatalog();
     super.dispose();
   }

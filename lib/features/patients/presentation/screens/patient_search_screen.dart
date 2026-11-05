@@ -119,13 +119,16 @@ class _PatientSearchViewState extends State<PatientSearchView> {
                     onSubmitted: _run,
                   ),
                 ),
-                const SizedBox(width: 12),
-                FilledButton.icon(
-                  key: const Key('patient-new'),
-                  onPressed: _newPatient,
-                  icon: const Icon(Icons.person_add_alt_1),
-                  label: const Text('New patient'),
-                ),
+                // Doctors search read-only (UI_DESIGN §4.6a).
+                if (widget.role != UserRole.doctor) ...[
+                  const SizedBox(width: 12),
+                  FilledButton.icon(
+                    key: const Key('patient-new'),
+                    onPressed: _newPatient,
+                    icon: const Icon(Icons.person_add_alt_1),
+                    label: const Text('New patient'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -264,14 +267,15 @@ class FamilyGroupCard extends StatelessWidget {
                   ),
                 ),
                 if (family.duplicatePhone) const _DuplicateChip(),
-                TextButton.icon(
-                  key: Key('family-add-${family.id}'),
-                  onPressed: () => context.go(
-                    AppRoutes.patientNewFor(role, familyId: family.id),
+                if (role != UserRole.doctor)
+                  TextButton.icon(
+                    key: Key('family-add-${family.id}'),
+                    onPressed: () => context.go(
+                      AppRoutes.patientNewFor(role, familyId: family.id),
+                    ),
+                    icon: const Icon(Icons.person_add_alt_1, size: 18),
+                    label: const Text('Add patient'),
                   ),
-                  icon: const Icon(Icons.person_add_alt_1, size: 18),
-                  label: const Text('Add patient'),
-                ),
               ],
             ),
           ),
@@ -344,7 +348,7 @@ class PatientRow extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           PatientNoChip(patient: patient),
-          if (!compact) ...[
+          if (!compact && role != UserRole.doctor) ...[
             const SizedBox(width: 8),
             TextButton(
               key: Key('patient-new-visit-${patient.id}'),
