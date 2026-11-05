@@ -16,6 +16,11 @@ import '../../features/settings/presentation/screens/initial_setup_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/settings/presentation/viewmodels/settings_controller.dart';
 import '../../features/users/presentation/screens/users_screen.dart';
+import '../../features/visits/presentation/screens/new_visit_screen.dart';
+import '../../features/visits/presentation/screens/queue_screen.dart';
+import '../../features/visits/presentation/screens/summary_screen.dart';
+import '../../features/visits/presentation/screens/visit_detail_screen.dart';
+import '../../features/visits/presentation/screens/visits_screen.dart';
 import 'app_routes.dart';
 import 'placeholder_screen.dart';
 import 'shells/app_shell.dart';
@@ -137,8 +142,10 @@ ShellRoute _roleShell(UserRole role) {
         else
           GoRoute(path: d.path, builder: (_, _) => _screenFor(d.path, d.label)),
       if (role == UserRole.admin) ..._adminRoutes(),
-      if (role == UserRole.admin || role == UserRole.reception)
+      if (role == UserRole.admin || role == UserRole.reception) ...[
         ..._patientRoutes(role),
+        ..._visitRoutes(role),
+      ],
     ],
   );
 }
@@ -167,6 +174,26 @@ List<GoRoute> _patientRoutes(UserRole role) {
       path: '$base/:id/edit',
       builder: (_, state) =>
           PatientFormScreen(role: role, patientId: state.pathParameters['id']),
+    ),
+  ];
+}
+
+/// Visit pages under `/<role>/visits` (Phase 4), shared by Reception and
+/// Admin. `/admin/visits` itself stays a placeholder until Phase 8.
+List<GoRoute> _visitRoutes(UserRole role) {
+  final base = AppRoutes.visitsFor(role);
+  return [
+    GoRoute(
+      path: '$base/new',
+      builder: (_, state) => NewVisitScreen(
+        role: role,
+        patientId: state.uri.queryParameters['patientId'] ?? '',
+      ),
+    ),
+    GoRoute(
+      path: '$base/:id',
+      builder: (_, state) =>
+          VisitDetailScreen(role: role, visitId: state.pathParameters['id']!),
     ),
   ];
 }
@@ -232,6 +259,12 @@ Widget _screenFor(String path, String label) {
       return const PatientSearchScreen(role: UserRole.reception);
     case AppRoutes.adminPatients:
       return const PatientSearchScreen(role: UserRole.admin);
+    case AppRoutes.receptionVisits:
+      return const VisitsScreen(role: UserRole.reception);
+    case AppRoutes.receptionQueue:
+      return const QueueScreen(role: UserRole.reception);
+    case AppRoutes.receptionSummary:
+      return const SummaryScreen();
     default:
       return PlaceholderScreen(title: label, embedded: true);
   }

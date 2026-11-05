@@ -25,6 +25,9 @@ import 'package:ramzan/features/settings/domain/entities/initial_setup_input.dar
 import 'package:ramzan/features/settings/domain/repositories/settings_repository.dart';
 import 'package:ramzan/features/settings/presentation/viewmodels/settings_controller.dart';
 import 'package:ramzan/features/users/domain/repositories/user_admin_repository.dart';
+import 'package:ramzan/features/visits/domain/entities/visit.dart';
+import 'package:ramzan/features/visits/domain/repositories/visits_repository.dart';
+import 'package:ramzan/features/visits/presentation/receipt/receipt_printer.dart';
 
 /// In-memory auth backend: drive it from tests with [emitUid] and [emitUser].
 class FakeAuthRepository implements AuthRepository {
@@ -112,6 +115,88 @@ class MockCatalogRepository extends Mock implements CatalogRepository {}
 class MockSettingsRepository extends Mock implements SettingsRepository {}
 
 class MockPatientsRepository extends Mock implements PatientsRepository {}
+
+class MockVisitsRepository extends Mock implements VisitsRepository {}
+
+/// Call once (setUpAll) before using `any()` with visit inputs.
+void registerVisitFallbacks() {
+  registerFallbackValue(
+    const VisitInput(
+      patient: patientAli,
+      doctor: doctorSara,
+      visitType: eyeCheckup,
+      fee: 0,
+      discountAmount: 0,
+      discountReason: '',
+      paymentMethod: PaymentMethod.cash,
+      paymentRef: '',
+      receiptCopies: 1,
+    ),
+  );
+  registerFallbackValue(VisitStatus.waiting);
+}
+
+/// Records what was sent to print instead of opening a dialog.
+class FakeReceiptPrinter implements ReceiptPrinter {
+  final printed = <({Uint8List bytes, String name})>[];
+  AppException? error;
+
+  @override
+  Future<void> print({required Uint8List bytes, required String name}) async {
+    final e = error;
+    if (e != null) throw e;
+    printed.add((bytes: bytes, name: name));
+  }
+}
+
+/// A visit builder with sensible defaults for list and queue tests.
+Visit sampleVisit({
+  String id = 'visit-1',
+  Patient patient = patientAli,
+  Doctor doctor = doctorSara,
+  VisitType visitType = eyeCheckup,
+  int token = 1,
+  String date = '2026-11-04',
+  int fee = 1500,
+  int discountAmount = 0,
+  String discountReason = '',
+  PaymentMethod paymentMethod = PaymentMethod.cash,
+  VisitStatus status = VisitStatus.waiting,
+  String createdBy = 'rec-1',
+  DateTime? createdAt,
+  DateTime? completedAt,
+  bool isFirstVisit = false,
+}) => Visit(
+  id: id,
+  patientId: patient.id,
+  patientName: patient.name,
+  patientNo: patient.displayNo,
+  phone: patient.personalPhone ?? patient.phones.first,
+  familyId: patient.familyId,
+  doctorId: doctor.id,
+  doctorName: doctor.name,
+  departmentId: doctor.departmentId,
+  departmentCode: doctor.departmentCode,
+  visitTypeId: visitType.id,
+  visitTypeName: visitType.name,
+  isOperation: visitType.isOperation,
+  isFollowUp: visitType.isFollowUp,
+  token: token,
+  tokenLabel: '${doctor.departmentCode}-$token',
+  date: date,
+  isFirstVisit: isFirstVisit,
+  fee: fee,
+  discountAmount: discountAmount,
+  discountReason: discountReason,
+  netAmount: fee - discountAmount,
+  paymentMethod: paymentMethod,
+  paymentRef: paymentMethod.needsReference ? 'REF' : '',
+  status: status,
+  receiptCopies: 1,
+  createdBy: createdBy,
+  createdAt: createdAt ?? DateTime.utc(2026, 11, 4, 6, 30),
+  completedAt: completedAt,
+);
 
 /// Call once (setUpAll) before using `any()` with patient inputs.
 void registerPatientFallbacks() {
@@ -371,6 +456,7 @@ Widget wrapWithProviders({
   SettingsRepository? settingsRepository,
   SettingsController? settingsController,
   PatientsRepository? patientsRepository,
+  VisitsRepository? visitsRepository,
   DevToolsRepository? devTools,
   Size size = const Size(1280, 800),
 }) {
@@ -389,6 +475,8 @@ Widget wrapWithProviders({
         ),
       if (patientsRepository != null)
         Provider<PatientsRepository>.value(value: patientsRepository),
+      if (visitsRepository != null)
+        Provider<VisitsRepository>.value(value: visitsRepository),
       if (devTools != null) Provider<DevToolsRepository>.value(value: devTools),
     ],
     child: MediaQuery(

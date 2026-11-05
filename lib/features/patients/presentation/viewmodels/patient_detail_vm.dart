@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/utils/karachi_date.dart';
 import '../../../../core/utils/phone.dart';
+import '../../../visits/domain/entities/visit.dart';
+import '../../../visits/domain/repositories/visits_repository.dart';
 import '../../domain/entities/family.dart';
 import '../../domain/entities/patient.dart';
 import '../../domain/repositories/patients_repository.dart';
@@ -17,12 +19,18 @@ class PatientDetailViewModel extends ChangeNotifier {
   PatientDetailViewModel({
     required PatientsRepository repository,
     required this.patientId,
+    VisitsRepository? visitsRepository,
     DateTime Function()? clock,
   }) : _repo = repository,
        _clock = clock ?? DateTime.now {
     _patientSub = _repo
         .watchPatient(patientId)
         .listen(_onPatient, onError: _onError);
+    // Visits tab (Phase 4); absent in tests that only cover the family.
+    _visitsSub = visitsRepository?.watchPatientVisits(patientId).listen((v) {
+      _visits = v;
+      notifyListeners();
+    }, onError: (Object _) {});
   }
 
   final PatientsRepository _repo;
@@ -32,7 +40,9 @@ class PatientDetailViewModel extends ChangeNotifier {
   StreamSubscription<Patient?>? _patientSub;
   StreamSubscription<Family?>? _familySub;
   StreamSubscription<List<Patient>>? _membersSub;
+  StreamSubscription<List<Visit>>? _visitsSub;
   String? _familyId;
+  List<Visit> _visits = const [];
   Patient? _patient;
   Family? _family;
   List<Patient> _members = const [];
@@ -45,6 +55,9 @@ class PatientDetailViewModel extends ChangeNotifier {
 
   Patient? get patient => _patient;
   Family? get family => _family;
+
+  /// This patient's visits, newest first.
+  List<Visit> get visits => _visits;
   bool get loading => _loading;
   bool get notFound => _notFound;
   bool get busy => _busy;
@@ -211,6 +224,7 @@ class PatientDetailViewModel extends ChangeNotifier {
     _patientSub?.cancel();
     _familySub?.cancel();
     _membersSub?.cancel();
+    _visitsSub?.cancel();
     super.dispose();
   }
 }

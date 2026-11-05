@@ -13,12 +13,14 @@ import 'package:ramzan/features/patients/presentation/screens/patient_search_scr
 import 'package:ramzan/features/patients/presentation/viewmodels/patient_detail_vm.dart';
 import 'package:ramzan/features/patients/presentation/viewmodels/patient_form_vm.dart';
 import 'package:ramzan/features/patients/presentation/viewmodels/patient_search_vm.dart';
+import 'package:ramzan/features/visits/domain/repositories/visits_repository.dart';
 
 import '../../helpers/fakes.dart';
 
 void main() {
   late FakeAuthRepository auth;
   late MockPatientsRepository repo;
+  late MockVisitsRepository visits;
   final today = DateTime.utc(2026, 11, 4, 6);
 
   setUpAll(registerPatientFallbacks);
@@ -26,6 +28,9 @@ void main() {
   setUp(() {
     auth = FakeAuthRepository();
     repo = MockPatientsRepository();
+    visits = MockVisitsRepository();
+    when(() => visits.watchPatientVisits(any()))
+        .thenAnswer((_) => Stream.value(const []));
     when(() => repo.getFamilies(any())).thenAnswer((inv) async {
       final ids = inv.positionalArguments.first as Iterable<String>;
       return [
@@ -60,6 +65,8 @@ void main() {
           AppRoutes.receptionPatientNew,
           AppRoutes.receptionPatientPattern,
           AppRoutes.receptionPatientEditPattern,
+          AppRoutes.receptionVisitNew,
+          AppRoutes.receptionVisitPattern,
         ])
           if (p != location)
             GoRoute(path: p, builder: (_, state) => Text('went ${state.uri}')),
@@ -70,6 +77,7 @@ void main() {
         providers: [
           ChangeNotifierProvider.value(value: session!),
           Provider<PatientsRepository>.value(value: repo),
+          Provider<VisitsRepository>.value(value: visits),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -287,6 +295,7 @@ void main() {
         ChangeNotifierProvider(
           create: (_) => PatientDetailViewModel(
             repository: repo,
+            visitsRepository: visits,
             patientId: 'pat-sara',
             clock: () => today,
           ),
@@ -312,7 +321,7 @@ void main() {
       expect(find.textContaining('16 y'), findsOneWidget);
       expect(find.text('T-BBBBB'), findsOneWidget);
       expect(find.text('Ali Khan'), findsOneWidget); // other member
-      expect(find.text('Visits — coming in Phase 4'), findsOneWidget);
+      expect(find.text('No visits yet'), findsOneWidget);
       await tester.tap(find.text('Reports'));
       await tester.pumpAndSettle();
       expect(find.text('Reports — coming in Phase 5'), findsOneWidget);
@@ -328,6 +337,46 @@ void main() {
         router.routerDelegate.currentConfiguration.uri.toString(),
         '/reception/patients/pat-ali',
       );
+    });
+
+    testWidgets('Visits tab lists past visits and New visit opens the form', (
+      tester,
+    ) async {
+      when(() => visits.watchPatientVisits('pat-sara')).thenAnswer(
+        (_) => Stream.value([
+          sampleVisit(id: 'old-2', token: 7, patient: patientSara),
+          sampleVisit(
+            id: 'old-1',
+            token: 3,
+            patient: patientSara,
+            visitType: eyeFollowUp,
+            fee: 500,
+            date: '2026-10-20',
+          ),
+        ]),
+      );
+      final router = await pump(
+        tester,
+        detail(),
+        location: AppRoutes.receptionPatientPattern,
+      );
+      await tester.pump();
+      expect(find.text('E-7'), findsOneWidget);
+      expect(find.text('E-3'), findsOneWidget);
+      expect(find.text('Rs 500'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('visit-row-old-1')));
+      await tester.pumpAndSettle();
+      expect(find.text('went /reception/visits/old-1'), findsOneWidget);
+
+      await pump(tester, detail(), location: AppRoutes.receptionPatientPattern);
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('patient-new-visit')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('went /reception/visits/new?patientId=pat-sara'),
+        findsOneWidget,
+      );
+      expect(router, isNotNull);
     });
 
     testWidgets('edit button, add member and change phone dialog', (

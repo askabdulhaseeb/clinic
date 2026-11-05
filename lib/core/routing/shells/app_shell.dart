@@ -9,6 +9,7 @@ import '../../../features/auth/presentation/viewmodels/session_controller.dart';
 import '../../../features/settings/presentation/viewmodels/settings_controller.dart';
 import '../../../features/settings/presentation/widgets/setup_banner.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/sync_badge.dart';
 import '../app_routes.dart';
 import 'shell_destination.dart';
 
@@ -149,7 +150,11 @@ class _CompactShell extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
-        actions: [_UserMenuButton(role: role)],
+        actions: [
+          const SyncBadge(),
+          const SizedBox(width: 4),
+          _UserMenuButton(role: role),
+        ],
       ),
       body: child,
       bottomNavigationBar: NavigationBar(
@@ -224,6 +229,8 @@ class _TopBar extends StatelessWidget {
             child: Text(title, style: Theme.of(context).textTheme.titleLarge),
           ),
           _RoleSwitcher(role: role),
+          const SizedBox(width: 8),
+          const SyncBadge(),
           const SizedBox(width: 8),
           _UserMenuButton(role: role),
         ],

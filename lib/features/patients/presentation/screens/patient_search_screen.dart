@@ -346,9 +346,12 @@ class PatientRow extends StatelessWidget {
           PatientNoChip(patient: patient),
           if (!compact) ...[
             const SizedBox(width: 8),
-            const Tooltip(
-              message: 'Coming in Phase 4',
-              child: TextButton(onPressed: null, child: Text('New visit')),
+            TextButton(
+              key: Key('patient-new-visit-${patient.id}'),
+              onPressed: () => context.go(
+                AppRoutes.visitNewFor(role, patientId: patient.id),
+              ),
+              child: const Text('New visit'),
             ),
             const Tooltip(
               message: 'Coming in Phase 6',

@@ -1,4 +1,4 @@
-// Firestore rules allow/deny matrix for Phases 1 and 2 (FIREBASE_ARCHITECTURE.md §6).
+// Firestore rules allow/deny matrix for Phases 1 to 4 (FIREBASE_ARCHITECTURE.md §6).
 // Runs against the Firestore emulator on 127.0.0.1:8080.
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -335,9 +335,9 @@ describe("master data write", () => {
 
 describe("other collections", () => {
   it("denied even for admin", async () => {
-    await assertFails(asAdmin().doc("visits/v1").get());
-    await assertFails(asAdmin().doc("visits/v1").set({ name: "x" }));
-    await assertFails(asAlice().collection("visits").get());
+    await assertFails(asAdmin().doc("appointments/a1").get());
+    await assertFails(asAdmin().doc("appointments/a1").set({ name: "x" }));
+    await assertFails(asAlice().collection("appointments").get());
     await assertFails(asAnon().doc("settings/general").get());
   });
 });
@@ -478,5 +478,191 @@ describe("counters", () => {
     await assertFails(asAdmin().doc("counters/patients_26").get());
     await assertFails(asAdmin().doc("counters/patients_26").set({ value: 4 }));
     await assertFails(asAlice().doc("counters/patients_26").update({ value: 4 }));
+  });
+});
+
+// ----- Phase 4: visits (§4.11) ---------------------------------------------
+
+const visit = (by: string) => ({
+  patientId: "p1",
+  patientName: "Ali Khan",
+  patientNo: "26-00001",
+  phone: "03001234567",
+  familyId: "f1",
+  doctorId: "d1",
+  doctorName: "Dr Sara",
+  departmentId: "eye",
+  departmentCode: "E",
+  visitTypeId: "eye-checkup",
+  visitTypeName: "Checkup",
+  isOperation: false,
+  isFollowUp: false,
+  token: 1,
+  tokenLabel: "E-1",
+  date: "2026-11-04",
+  isFirstVisit: true,
+  fee: 1500,
+  discountAmount: 0,
+  discountReason: "",
+  netAmount: 1500,
+  paymentMethod: "cash",
+  paymentRef: "",
+  status: "waiting",
+  startedAt: null,
+  completedAt: null,
+  appointmentId: null,
+  operationId: null,
+  saleId: null,
+  hasPrescription: false,
+  receiptCopies: 1,
+  deleted: false,
+  deletedAt: null,
+  deletedBy: null,
+  deleteReason: null,
+  editReason: null,
+  branchId: "main",
+  createdAt: new Date(),
+  createdAtLocal: new Date(),
+  createdBy: by,
+  updatedAt: new Date(),
+  updatedBy: by,
+});
+
+describe("visits read", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("visits/v1").set(visit(ADMIN));
+    });
+  });
+  it("any signed-in role reads and queries by day, patient and doctor", async () => {
+    await assertSucceeds(asAlice().doc("visits/v1").get());
+    await assertSucceeds(asDoctor().doc("visits/v1").get());
+    await assertSucceeds(asAlice().collection("visits").where("date", "==", "2026-11-04").get());
+    await assertSucceeds(asAdmin().collection("visits").where("patientId", "==", "p1").get());
+    await assertSucceeds(
+      asDoctor().collection("visits").where("doctorId", "==", "d1").where("date", "==", "2026-11-04").get()
+    );
+  });
+  it("anonymous denied", async () => {
+    await assertFails(asAnon().doc("visits/v1").get());
+    await assertFails(asAnon().collection("visits").get());
+  });
+});
+
+describe("visits create", () => {
+  it("reception and admin create with createdBy = self", async () => {
+    await assertSucceeds(asAlice().doc("visits/v1").set(visit(ALICE)));
+    await assertSucceeds(asAdmin().doc("visits/v2").set(visit(ADMIN)));
+  });
+  it("a discount needs a reason and a consistent net", async () => {
+    await assertSucceeds(
+      asAlice().doc("visits/v1").set({
+        ...visit(ALICE),
+        discountAmount: 200,
+        discountReason: "Old patient",
+        netAmount: 1300,
+      })
+    );
+    await assertFails(
+      asAlice().doc("visits/v2").set({ ...visit(ALICE), discountAmount: 200, netAmount: 1300 })
+    );
+    await assertFails(
+      asAlice().doc("visits/v3").set({
+        ...visit(ALICE),
+        discountAmount: 200,
+        discountReason: "Old patient",
+        netAmount: 1500,
+      })
+    );
+    await assertFails(
+      asAlice().doc("visits/v4").set({
+        ...visit(ALICE),
+        discountAmount: 1600,
+        discountReason: "x",
+        netAmount: 0,
+      })
+    );
+    await assertFails(asAlice().doc("visits/v5").set({ ...visit(ALICE), netAmount: 1400 }));
+  });
+  it("shape checks on create", async () => {
+    await assertFails(asAlice().doc("visits/v1").set({ ...visit(ALICE), patientId: "" }));
+    await assertFails(asAlice().doc("visits/v1").set({ ...visit(ALICE), patientName: "" }));
+    await assertFails(asAlice().doc("visits/v1").set({ ...visit(ALICE), doctorId: "" }));
+    await assertFails(asAlice().doc("visits/v1").set({ ...visit(ALICE), visitTypeId: "" }));
+    await assertFails(asAlice().doc("visits/v1").set({ ...visit(ALICE), tokenLabel: "" }));
+    await assertFails(asAlice().doc("visits/v1").set({ ...visit(ALICE), token: 0 }));
+    await assertFails(asAlice().doc("visits/v1").set({ ...visit(ALICE), date: "" }));
+    await assertFails(asAlice().doc("visits/v1").set({ ...visit(ALICE), fee: -1, netAmount: -1 }));
+    await assertFails(asAlice().doc("visits/v1").set({ ...visit(ALICE), paymentMethod: "cheque" }));
+    await assertFails(asAlice().doc("visits/v1").set({ ...visit(ALICE), status: "completed" }));
+    await assertFails(asAlice().doc("visits/v1").set({ ...visit(ALICE), deleted: true }));
+    await assertFails(asAlice().doc("visits/v1").set({ ...visit(ALICE), receiptCopies: 9 }));
+    await assertFails(asAlice().doc("visits/v1").set({ ...visit(ALICE), branchId: "other" }));
+  });
+  it("doctor, anonymous and wrong createdBy denied", async () => {
+    await assertFails(asDoctor().doc("visits/v1").set(visit("doctor-uid")));
+    await assertFails(asAnon().doc("visits/v1").set(visit("anon")));
+    await assertFails(asAlice().doc("visits/v1").set(visit(BOB)));
+  });
+});
+
+describe("visits update", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("visits/v1").set(visit(ALICE));
+      await ctx.firestore().doc("visits/other").set({ ...visit(ALICE), doctorId: "d2" });
+    });
+  });
+  it("reception moves the status and nothing else", async () => {
+    await assertSucceeds(
+      asAlice().doc("visits/v1").update({ status: "inProgress", startedAt: new Date(), updatedBy: ALICE })
+    );
+    await assertSucceeds(
+      asAlice().doc("visits/v1").update({ status: "completed", completedAt: new Date(), updatedBy: ALICE })
+    );
+    await assertFails(asAlice().doc("visits/v1").update({ status: "bogus", updatedBy: ALICE }));
+    await assertFails(asAlice().doc("visits/v1").update({ fee: 100, netAmount: 100, updatedBy: ALICE }));
+    await assertFails(asAlice().doc("visits/v1").update({ discountAmount: 100, updatedBy: ALICE }));
+    await assertFails(asAlice().doc("visits/v1").update({ hasPrescription: true, updatedBy: ALICE }));
+    await assertFails(asAlice().doc("visits/v1").update({ deleted: true, updatedBy: ALICE }));
+    await assertFails(asAlice().doc("visits/v1").update({ status: "completed", updatedBy: BOB }));
+  });
+  it("the assigned doctor moves status and hasPrescription on own visits only", async () => {
+    await assertSucceeds(
+      asDoctor().doc("visits/v1").update({ status: "inProgress", startedAt: new Date(), updatedBy: "doctor-uid" })
+    );
+    await assertSucceeds(asDoctor().doc("visits/v1").update({ hasPrescription: true, updatedBy: "doctor-uid" }));
+    await assertFails(asDoctor().doc("visits/v1").update({ fee: 100, netAmount: 100, updatedBy: "doctor-uid" }));
+    await assertFails(
+      asDoctor().doc("visits/other").update({ status: "inProgress", updatedBy: "doctor-uid" })
+    );
+  });
+  it("admin edits any business field with updatedBy = self; stamps locked", async () => {
+    await assertSucceeds(
+      asAdmin().doc("visits/v1").update({
+        fee: 1000,
+        discountAmount: 100,
+        discountReason: "Correction",
+        netAmount: 900,
+        editReason: "Wrong fee typed",
+        updatedBy: ADMIN,
+      })
+    );
+    // Soft delete needs a reason; checked before the valid delete below
+    // because the merged document would otherwise already carry one.
+    await assertFails(asAdmin().doc("visits/v1").update({ deleted: true, updatedBy: ADMIN }));
+    await assertSucceeds(
+      asAdmin().doc("visits/v1").update({ deleted: true, deleteReason: "Duplicate", deletedBy: ADMIN, updatedBy: ADMIN })
+    );
+    await assertFails(asAdmin().doc("visits/v1").update({ fee: 1000, netAmount: 1000, updatedBy: ALICE }));
+    await assertFails(asAdmin().doc("visits/v1").update({ createdBy: ADMIN, updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("visits/v1").update({ branchId: "b2", updatedBy: ADMIN }));
+    await assertFails(
+      asAdmin().doc("visits/v1").update({ discountAmount: 100, netAmount: 1400, updatedBy: ADMIN })
+    );
+  });
+  it("nobody deletes", async () => {
+    await assertFails(asAdmin().doc("visits/v1").delete());
+    await assertFails(asAlice().doc("visits/v1").delete());
   });
 });

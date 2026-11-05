@@ -23,6 +23,8 @@ abstract final class AppRoutes {
   static const String receptionPatientEditPattern =
       '/reception/patients/:id/edit';
   static const String receptionVisits = '/reception/visits';
+  static const String receptionVisitNew = '/reception/visits/new';
+  static const String receptionVisitPattern = '/reception/visits/:id';
   static const String receptionQueue = '/reception/queue';
   static const String receptionAppointments = '/reception/appointments';
   static const String receptionReminders = '/reception/reminders';
@@ -44,6 +46,9 @@ abstract final class AppRoutes {
   static const String adminPatientPattern = '/admin/patients/:id';
   static const String adminPatientEditPattern = '/admin/patients/:id/edit';
   static const String adminVisits = '/admin/visits';
+  // Admin may create visits too (FEATURES §3); the list itself is Phase 8.
+  static const String adminVisitNew = '/admin/visits/new';
+  static const String adminVisitPattern = '/admin/visits/:id';
   static const String adminInventory = '/admin/inventory';
   static const String adminFinance = '/admin/finance';
   static const String adminCatalog = '/admin/catalog';
@@ -85,6 +90,17 @@ abstract final class AppRoutes {
 
   static String patientEditFor(UserRole role, String id) =>
       '${patientsFor(role)}/$id/edit';
+
+  // Visit pages exist under Reception and Admin with the same screens.
+  static String visitsFor(UserRole role) => '${rootFor(role)}/visits';
+
+  /// `/<role>/visits/new?patientId=` (Phase 4).
+  static String visitNewFor(UserRole role, {required String patientId}) => Uri(
+    path: '${visitsFor(role)}/new',
+    queryParameters: {'patientId': patientId},
+  ).toString();
+
+  static String visitFor(UserRole role, String id) => '${visitsFor(role)}/$id';
 
   static String adminCatalogVisitType(String id) =>
       '$adminCatalogVisitTypes/$id';

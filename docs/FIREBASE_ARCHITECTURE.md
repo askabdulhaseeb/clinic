@@ -1,6 +1,6 @@
 # Firebase Architecture
 
-**Status:** Draft v5 — 4 Nov 2026. v5: Phase 3 — `families`, `patients` rules and shape; `assignPatientNo` and `checkDuplicateFamilyPhone` triggers; `dobApproximate` instead of `ageYears`; patient cache listeners; seed family. v4: Phase 2 — `branches`, `settings`, `departments`, `visitTypes`, `doctors` rules; doctor–login link kept by `createUser` / `setUserRoles`; logo in Storage; first-run setup from the app. v3: budget decisions — summaries kept by increments (no recompute), no backup, Storage bucket in us-central1, no prescription photos, cost table for 500 visits a day.
+**Status:** Draft v6 — 4 Nov 2026. v6: Phase 4 — `visits` shape and rules (reception and own doctor may change status), client token from the cached today's visits, one shared today's-visits listener behind the queue, list, summary and sync badge, receipt data denormalised on the visit. v5: Phase 3 — `families`, `patients` rules and shape; `assignPatientNo` and `checkDuplicateFamilyPhone` triggers; `dobApproximate` instead of `ageYears`; patient cache listeners; seed family. v4: Phase 2 — `branches`, `settings`, `departments`, `visitTypes`, `doctors` rules; doctor–login link kept by `createUser` / `setUserRoles`; logo in Storage; first-run setup from the app. v3: budget decisions — summaries kept by increments (no recompute), no backup, Storage bucket in us-central1, no prescription photos, cost table for 500 visits a day.
 **Companion to:** [FEATURES.md](FEATURES.md). Feature behaviour is defined there; this document defines how it is stored and secured.
 
 ---
@@ -172,9 +172,11 @@ receiptCopies,
 deleted: false, deletedAt, deletedBy, deleteReason, editReason,
 branchId, createdBy
 ```
-Visits are written by reception and only edited by Admin, except `status`, `startedAt`, `completedAt`, `hasPrescription`, which the assigned doctor may update. Rules enforce this field by field.
+Visits are written by reception (and Admin) and only edited by Admin, except `status`, `startedAt`, `completedAt`, which reception and the assigned doctor may update (decided 4 Nov 2026: reception drives the queue for doctors who do not use the app), and `hasPrescription`, which only the assigned doctor sets (Phase 5). Rules enforce this field by field.
 
-**Token generation (client):** query the local cache for `visits` where `doctorId == X and date == today`, take `max(token) + 1`, label with `departmentCode`. Single reception device, so no conflict handling in v1.
+Create shape (Phase 4): `patientName`, `doctorName`, `visitTypeName`, `tokenLabel`, `date` non-empty strings; `token` int ≥ 1; `fee` int ≥ 0; `discountAmount` int between 0 and `fee`; `discountReason` non-empty when `discountAmount > 0`; `netAmount == fee - discountAmount`; `paymentMethod` in cash/bank/jazzcash/easypaisa; `status == "waiting"`; `deleted == false`; `receiptCopies` int 1 to 5; `branchId` in the caller's claims; `createdBy` the caller. `discountReason` is one of the preset labels or the free text typed under Other (FEATURES §2). `isFirstVisit` is `patient.visitCount == 0` at creation. The same batch updates the patient: `visitCount` increment, `lastVisitAt` (client clock, so it is visible offline), `lastDoctorId`.
+
+**Token generation (client):** query the local cache (`Source.cache`) for `visits` where `doctorId == X and date == today`, take `max(token) + 1`, label with the doctor's `departmentCode`. The cache holds today's visits because the reception session keeps the today's-visits listener open (§9). Single reception device, so no conflict handling in v1.
 
 ### 4.12 `prescriptions/{visitId}`
 ID equals the visit ID. Separate from the visit so doctor writes never collide with reception writes. Typed only; there is no photo mode.
@@ -329,7 +331,7 @@ Roles come from `request.auth.token.roles`. Helper functions: `isAdmin()`, `isRe
 | `users` | own doc, or Admin | Functions only | Admin: only `displayName` (+ `updatedAt`, `updatedBy`). Owner: only `mustChangePassword` → `false` (+ `updatedAt`, `updatedBy`). Roles, `active`, `doctorId`: Functions only | never |
 | `families`, `patients` | any signed-in | Reception, Admin (`createdBy` = caller, `branchId` in claims). `families`: non-empty `phone` and `headName`, `patientCount` int, `duplicatePhone == false`. `patients`: `patientNo == null`, non-empty `tempNo`, `familyId`, `name`, `gender` in male/female/other, `phones` and `searchKeys` lists, `visitCount` int, `deleted` bool | Reception, Admin (`updatedBy` = caller, same shape). Locked: `families.duplicatePhone`; `patients.patientNo`, `tempNo`; on both `branchId`, `createdAt`, `createdAtLocal`, `createdBy` | never (soft) |
 | `appointments` | any signed-in | Reception, Doctor, Admin | Reception, Doctor, Admin | never |
-| `visits` | any signed-in | Reception, Admin | Admin any field; Doctor only `status`, `startedAt`, `completedAt`, `hasPrescription` on own visits | never (soft) |
+| `visits` | any signed-in | Reception, Admin (shape in §4.11) | Admin any field except `branchId`, `createdAt`, `createdAtLocal`, `createdBy`; Reception only `status`, `startedAt`, `completedAt` (+ `updatedAt`, `updatedBy`); Doctor the same three plus `hasPrescription`, on own visits only. `status` in waiting/inProgress/completed | never (soft) |
 | `prescriptions` | any signed-in | Doctor (own visit) | Doctor (own) | never |
 | `reports` | any signed-in | Reception, Admin | Reception, Admin | never (soft) |
 | `operations` | any signed-in | Doctor, Admin | Doctor, Reception (only `postOpDays`, `followUpAppointmentIds`), Admin | never |
@@ -368,9 +370,10 @@ Rules: any signed-in user reads. Reception and Admin write under `reports` (Phas
 
 | Collection | Fields |
 |---|---|
-| `visits` | `doctorId asc, date asc, deleted asc, token asc` (doctor queue) |
-| `visits` | `patientId asc, deleted asc, createdAt desc` (history) |
-| `visits` | `date asc, deleted asc, createdAt desc` (reception day list) |
+| `visits` | `doctorId asc, date asc, deleted asc, token asc` (doctor queue; Phase 5) |
+| `visits` | `patientId asc, deleted asc, createdAt desc` (history; not yet created: Phase 4 queries `patientId` alone and filters `deleted` and sorts on the client) |
+| `visits` | `date asc, deleted asc, createdAt desc` (reception day list; same: Phase 4 queries `date` alone) |
+| `visits` | `doctorId asc, date asc` (token lookup; two equality filters need no composite index) |
 | `appointments` | `doctorId asc, date asc, status asc` |
 | `appointments` | `date asc, status asc, reminderSentAt asc` (reminders due) |
 | `appointments` | `patientId asc, date desc` |
@@ -393,9 +396,11 @@ Firestore will also prompt for any missing index on first use; the list above is
 
 - Firestore persistence is enabled with `persistentLocalCache`. Single tab assumed.
 - On login reception attaches live listeners to: `settings`, `departments`, `doctors`, `visitTypes`, `inventoryItems`, today's `visits`, today's and tomorrow's `appointments`, and the full `families` and `patients` collections. The full patient set is kept in the cache so phone and name search work offline. At 20,000 patients this is roughly 20 MB and a one-time read cost per device.
-- Writes go to the local cache first and sync in the background. The UI shows an online/offline badge and a pending-write count from `waitForPendingWrites`.
+- Writes go to the local cache first and sync in the background. The UI shows an online/offline badge and a pending-write count. Decided 4 Nov 2026: both come from the today's-visits listener (`includeMetadataChanges: true`): the count is the number of today's visit documents with `hasPendingWrites`, and the badge shows Offline while the latest snapshot `isFromCache` with nothing pending. No extra listener, no polling.
 - New patients get `tempNo` immediately; `patientNo` arrives after sync and the next receipt shows it.
+- Firestore resolves a write's future only when the server has acknowledged it, so an awaited `commit()` would hang Save while offline. Decided 4 Nov 2026: repositories wrap every reception write in `commitOrQueue` (`core/firebase/offline_write.dart`), which waits up to 1.5 s for the acknowledgement (so a rules rejection still surfaces online) and otherwise returns, treating the write as queued in the local cache. A rejection that arrives later is logged; the document disappears from the listener, which is the visible sign.
 - The full-collection listeners for `families` and `patients` are held by `PatientCacheController` (Phase 3), which starts them when a user with the reception role signs in and stops them on sign-out. Doctors and admins without the reception role do not pay for the cache.
+- The today's-visits listener (`visits where date == today`) is held by `TodayVisitsController` (Phase 4) for reception and admin sessions and re-subscribes when the Karachi date changes. The Visits list, the queue board, the shift summary, the sync badge and the "waiting now" count on the new-visit form all read from it, so a day of 500 visits costs about 500 reads per reception device.
 - Tokens are computed from the cache. Receipt PDFs are generated on the client, so printing works offline.
 - Uploads (reports) are queued by the app and sent when online; the report document is created only after the file upload succeeds.
 
@@ -414,7 +419,7 @@ Target: stay inside the Blaze no-cost quotas. Sized for **500 visits a day** (ab
 | Resource | Daily use at 500 visits | No-cost quota | Monthly cost |
 |---|---|---|---|
 | Firestore writes | about 9,000 (visits ×4, prescriptions, patients, appointments, sales, stock, summaries, ledger) | 20,000 / day | 0 |
-| Firestore reads | about 10,000 (listeners deliver changed docs only; patients cached on reception) | 50,000 / day | 0 |
+| Firestore reads | about 10,000 (listeners deliver changed docs only; patients cached on reception; tokens from the cache, never a server query) | 50,000 / day | 0 |
 | Firestore storage incl. indexes | grows about 1.5 GiB a year | 1 GiB | 0 in year 1, then about 0.10 USD per extra GiB |
 | Cloud Functions | about 8,000 invocations | 2,000,000 / month | 0 |
 | Cloud Storage (us-central1) | reports about 50 MB a day, 1.5 GB a month | 5 GB stored, 100 GB download / month | 0 for the first 3 to 4 months, then about 0.02 USD per GB; about 0.30 USD a month by end of year 1 |

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
 import 'package:provider/provider.dart';
 import 'package:ramzan/app.dart';
 import 'package:ramzan/core/routing/app_router.dart';
@@ -10,6 +11,8 @@ import 'package:ramzan/features/catalog/domain/repositories/catalog_repository.d
 import 'package:ramzan/features/settings/domain/repositories/settings_repository.dart';
 import 'package:ramzan/features/settings/presentation/viewmodels/settings_controller.dart';
 import 'package:ramzan/features/users/domain/repositories/user_admin_repository.dart';
+import 'package:ramzan/features/visits/domain/repositories/visits_repository.dart';
+import 'package:ramzan/features/visits/presentation/viewmodels/today_visits_controller.dart';
 
 import 'helpers/fakes.dart';
 
@@ -22,18 +25,25 @@ void main() {
   setUp(() => settingsRepo = FakeSettingsRepository());
   tearDown(() => settingsRepo.dispose());
 
-  Widget app(SessionController session, {SettingsController? settings}) =>
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider<SessionController>.value(value: session),
-          Provider<UserAdminRepository>.value(value: MockUserAdminRepository()),
-          Provider<CatalogRepository>.value(value: stubbedCatalog()),
-          Provider<SettingsRepository>.value(value: settingsRepo),
-          if (settings != null)
-            ChangeNotifierProvider<SettingsController>.value(value: settings),
-        ],
-        child: const ClinicApp(),
-      );
+  Widget app(
+    SessionController session, {
+    SettingsController? settings,
+    TodayVisitsController? today,
+    VisitsRepository? visits,
+  }) => MultiProvider(
+    providers: [
+      ChangeNotifierProvider<SessionController>.value(value: session),
+      Provider<UserAdminRepository>.value(value: MockUserAdminRepository()),
+      Provider<CatalogRepository>.value(value: stubbedCatalog()),
+      Provider<SettingsRepository>.value(value: settingsRepo),
+      if (visits != null) Provider<VisitsRepository>.value(value: visits),
+      if (settings != null)
+        ChangeNotifierProvider<SettingsController>.value(value: settings),
+      if (today != null)
+        ChangeNotifierProvider<TodayVisitsController>.value(value: today),
+    ],
+    child: const ClinicApp(),
+  );
 
   testWidgets('boots to splash, then login once signed out', (tester) async {
     final session = SessionController(
@@ -70,6 +80,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Dashboard — coming soon'), findsOneWidget);
     expect(find.byType(NavigationRail), findsOneWidget);
+  });
+
+  testWidgets('signed-in reception lands on today\'s visits (Phase 4)', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final visits = MockVisitsRepository();
+    when(() => visits.watchVisitsOn(any())).thenAnswer(
+      (_) => Stream.value(
+        DayVisits(visits: [sampleVisit()], pendingWrites: 0, fromCache: false),
+      ),
+    );
+    final session = await tester.runAsync(
+      () => signedInSession(repo, receptionUser),
+    );
+    final today = TodayVisitsController(
+      repository: visits,
+      session: session!,
+      dateCheckInterval: Duration.zero,
+    );
+    addTearDown(today.dispose);
+    await tester.pumpWidget(app(session, visits: visits, today: today));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('visits-new')), findsOneWidget);
+    expect(find.text('Ali Khan'), findsOneWidget);
+    expect(find.byKey(const Key('sync-badge')), findsOneWidget);
+    expect(find.text('Visits — coming soon'), findsNothing);
   });
 
   testWidgets('first login is forced to change password', (tester) async {

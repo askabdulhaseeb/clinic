@@ -26,7 +26,7 @@ void main() {
 
   Future<void> openPatients(WidgetTester tester) async {
     await signIn(tester, 'reception@clinic.test', 'Reception12345');
-    await waitFor(tester, find.text('Visits — coming soon'));
+    await waitFor(tester, find.byKey(const Key('visits-new')));
     await tester.tap(find.text('Patients'));
     await waitFor(tester, find.byKey(const Key('patient-search')));
   }
@@ -90,7 +90,7 @@ void main() {
       timeout: const Duration(seconds: 40),
     );
     expect(find.textContaining('~40 y'), findsOneWidget);
-    expect(find.text('Visits — coming in Phase 4'), findsOneWidget);
+    expect(find.text('No visits yet'), findsOneWidget);
 
     // Add a second member to the same family.
     await tester.tap(find.byKey(const Key('family-add-member')));

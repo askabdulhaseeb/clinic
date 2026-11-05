@@ -1,6 +1,6 @@
 # Clinic Management App — Feature Specification
 
-**Status:** Draft v8 — 4 Nov 2026. v8: Phase 3 decisions (age stored as an approximate date of birth, family phone clash blocked when online, placeholder tabs on the patient page). v7: Phase 2 decisions (doctor–login link kept by Cloud Functions, first-run setup banner, editable department code, WhatsApp template placeholders). v6: budget decisions — prescriptions are typed only (no photos), no managed backup, dashboard totals kept by increments, Storage bucket in a US region for the no-cost quota. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
+**Status:** Draft v9 — 4 Nov 2026. v9: Phase 4 decisions (reception may move visits through the queue, preset discount reasons, clinic-wide shift summary with a personal toggle, sync badge built with the visit flow). v8: Phase 3 decisions (age stored as an approximate date of birth, family phone clash blocked when online, placeholder tabs on the patient page). v7: Phase 2 decisions (doctor–login link kept by Cloud Functions, first-run setup banner, editable department code, WhatsApp template placeholders). v6: budget decisions — prescriptions are typed only (no photos), no managed backup, dashboard totals kept by increments, Storage bucket in a US region for the no-cost quota. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
 **Project:** `ramzan` (Flutter). Clinic name is not hard-coded; Admin sets it in Settings and it appears on receipts and the app header.
 
 This document is the source of truth for what the app does. Code follows this document. Anything not written here is not a requirement yet.
@@ -59,6 +59,11 @@ Reception runs on the **web** at the front desk and must keep working **offline*
 | Patient age | Decided 4 Nov 2026. Reception enters either a date of birth or an age in years. An age is stored as an approximate date of birth (1 January of the birth year) and shown as `~40 y`; a real date of birth gives the exact age. Editing shows the age back as a number. |
 | Family phone clash | Decided 4 Nov 2026. When online, changing a family phone to a number another family already uses is blocked with that family's head name; the right fix is to move the patients. Offline the change goes through and a Cloud Function flags both families as duplicates for Admin. |
 | Patient page in Phase 3 | Decided 4 Nov 2026. The patient page shows the family card, edit and WhatsApp now; the Visits, Reports and Appointments tabs are placeholders until Phases 4–6. The New visit and Book buttons in search results are disabled until then. |
+| Queue status at reception | Decided 4 Nov 2026. Reception may move a visit to in progress and to completed from the queue board (for doctors who do not use the app); doctors do the same from their own queue in Phase 5. Status is the only part of a saved visit reception can change. |
+| Discount reasons | Decided 4 Nov 2026. A fixed preset list (Old patient, Staff or family, Poor patient, Doctor's instruction) plus Other with a free-text reason. The chosen text is stored on the visit so Admin's discount report groups by it. |
+| Shift summary scope | Decided 4 Nov 2026. Today's totals for the whole clinic, with a "My visits only" switch that keeps the visits the signed-in user created. Computed from the visits already loaded for the queue, no extra reads. |
+| Fee on a visit | Decided 4 Nov 2026. The fee comes from the doctor's fee schedule and is read-only at reception. When no fee is set for that doctor and visit type the form says so and will not save; Admin fixes the fee grid. |
+| Visits list scope | Decided 4 Nov 2026. The reception Visits page lists today's visits only (one listener shared with the queue, the summary and the sync badge). Older visits are reached from the patient page, which also reprints receipts. |
 
 ---
 
@@ -138,7 +143,7 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 2. Select department, then doctor. Only active doctors of that department appear.
 3. Select visit type. Fee fills in automatically from the fee schedule for that doctor and type.
 4. Follow-up type uses the doctor's reduced follow-up fee.
-5. Optional discount: enter amount or percentage. Reason is mandatory. Net amount shows.
+5. Optional discount: enter amount or percentage. Reason is mandatory: a preset (Old patient, Staff or family, Poor patient, Doctor's instruction) or Other with free text. Net amount shows. The fee itself is read-only (see §2).
 6. Select payment method: cash, bank transfer, JazzCash, Easypaisa. Bank and wallet payments have an optional reference field.
 7. Save. A token number is issued for that doctor for today. Visit appears in the doctor's queue.
 8. Print A4 receipt.
@@ -152,6 +157,7 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 ### 5.4 Queue management
 - Live waiting list per doctor for today, with token labels like E-12 and status.
 - Reception can see which doctor is free and how many are waiting.
+- Reception can mark a visit in progress or completed from the board (decided 4 Nov 2026, see §2); doctors do the same from their queue.
 - Token numbers reset daily per doctor.
 
 ### 5.5 Reports upload
@@ -175,11 +181,12 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 
 ### 5.8 Shift summary
 - Reception sees today's totals: visits, cash collected, other payment totals, discounts given.
+- Whole clinic by default; a "My visits only" switch narrows it to visits the signed-in user created (decided 4 Nov 2026).
 
 ### 5.9 Offline behaviour
 - Reception web keeps working without internet: patient search of already-synced data, new patients, visits, tokens, payments, and receipts.
 - Data syncs when the connection returns.
-- A visible indicator shows online, offline, or pending sync count.
+- A visible indicator in the top bar shows Online, Offline, or Syncing with the number of visits still waiting to reach the server (built in Phase 4 with the visit flow, decided 4 Nov 2026).
 - Token numbers are issued locally while offline. v1 assumes one reception device, so no cross-device token conflict handling is built. If a second reception device is added later, conflict handling must be designed first.
 
 ---

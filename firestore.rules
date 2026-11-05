@@ -7,6 +7,7 @@ rules_version = '2';
 // Phase 1: role helpers + `users`.
 // Phase 2: `branches`, `settings`, `departments`, `visitTypes`, `doctors`.
 // Phase 3: `families`, `patients` (`counters` stays Functions-only).
+// Phase 4: `visits`.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -222,6 +223,75 @@ service cloud.firestore {
         && request.resource.data.deleted is bool
         && !changedKeys().hasAny(['patientNo', 'tempNo', 'branchId', 'createdAt', 'createdAtLocal', 'createdBy'])
         && updatedByIsCaller();
+      allow delete: if false;
+    }
+
+    // ----- visits/{visitId}  (§4.11) --------------------------------------
+    // Reception and Admin create (shape checked, price consistent). Status
+    // moves by reception and the assigned doctor (decided 4 Nov 2026); the
+    // doctor also sets hasPrescription. Admin edits anything else; stamps
+    // and branch never change. Soft delete needs a reason.
+    function visitStatusValid(v) {
+      return v.status in ['waiting', 'inProgress', 'completed'];
+    }
+
+    function visitPriceValid(v) {
+      return v.fee is int && v.fee >= 0
+        && v.discountAmount is int
+        && v.discountAmount >= 0
+        && v.discountAmount <= v.fee
+        && v.netAmount is int
+        && v.netAmount == v.fee - v.discountAmount
+        && (v.discountAmount == 0 || isNonEmptyString(v.discountReason));
+    }
+
+    function visitShapeValid(v) {
+      return isNonEmptyString(v.patientId)
+        && isNonEmptyString(v.patientName)
+        && isNonEmptyString(v.doctorId)
+        && isNonEmptyString(v.doctorName)
+        && isNonEmptyString(v.departmentId)
+        && isNonEmptyString(v.visitTypeId)
+        && isNonEmptyString(v.visitTypeName)
+        && isNonEmptyString(v.tokenLabel)
+        && v.token is int && v.token >= 1
+        && isNonEmptyString(v.date)
+        && v.paymentMethod in ['cash', 'bank', 'jazzcash', 'easypaisa']
+        && v.receiptCopies is int
+        && v.receiptCopies >= 1
+        && v.receiptCopies <= 5
+        && visitStatusValid(v)
+        && visitPriceValid(v);
+    }
+
+    function statusOnlyChange(allowed) {
+      return changedKeys().hasOnly(allowed.concat(['updatedAt', 'updatedBy']))
+        && visitStatusValid(request.resource.data)
+        && updatedByIsCaller();
+    }
+
+    match /visits/{visitId} {
+      allow read: if isSignedIn();
+      allow create: if isReceptionOrAdmin()
+        && visitShapeValid(request.resource.data)
+        && request.resource.data.status == 'waiting'
+        && request.resource.data.deleted == false
+        && inCallerBranch(request.resource.data.branchId)
+        && createdByIsCaller();
+      allow update: if
+        (isAdmin()
+          && visitShapeValid(request.resource.data)
+          && request.resource.data.deleted is bool
+          && (request.resource.data.deleted == false
+              || isNonEmptyString(request.resource.data.deleteReason))
+          && !changedKeys().hasAny(['branchId', 'createdAt', 'createdAtLocal', 'createdBy'])
+          && updatedByIsCaller())
+        ||
+        (isReception()
+          && statusOnlyChange(['status', 'startedAt', 'completedAt']))
+        ||
+        (isOwnDoctor(resource.data.doctorId)
+          && statusOnlyChange(['status', 'startedAt', 'completedAt', 'hasPrescription']));
       allow delete: if false;
     }
 

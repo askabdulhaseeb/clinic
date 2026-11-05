@@ -14,6 +14,8 @@ import '../../../auth/domain/entities/user_role.dart';
 import '../../../catalog/presentation/widgets/action_error_listener.dart';
 import '../../../settings/domain/entities/clinic_settings.dart';
 import '../../../settings/presentation/viewmodels/settings_controller.dart';
+import '../../../visits/domain/repositories/visits_repository.dart';
+import '../../../visits/presentation/screens/visits_screen.dart';
 import '../../domain/entities/patient.dart';
 import '../../domain/repositories/patients_repository.dart';
 import '../viewmodels/patient_detail_vm.dart';
@@ -39,6 +41,7 @@ class PatientDetailScreen extends StatelessWidget {
       key: ValueKey(patientId),
       create: (context) => PatientDetailViewModel(
         repository: context.read<PatientsRepository>(),
+        visitsRepository: context.read<VisitsRepository?>(),
         patientId: patientId,
       ),
       child: PatientDetailView(
@@ -112,7 +115,7 @@ class PatientDetailView extends StatelessWidget {
     final wide = Breakpoints.isExpanded(context);
 
     final family = _FamilyCard(vm: vm, role: role, patient: patient);
-    final tabs = _PlaceholderTabs(patient: patient);
+    final tabs = _Tabs(vm: vm, role: role);
 
     return Scaffold(
       body: Column(
@@ -133,6 +136,15 @@ class PatientDetailView extends StatelessWidget {
                     context.go(AppRoutes.patientEditFor(role, patient.id)),
                 icon: const Icon(Icons.edit_outlined, size: 18),
                 label: const Text('Edit'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                key: const Key('patient-new-visit'),
+                onPressed: () => context.go(
+                  AppRoutes.visitNewFor(role, patientId: patient.id),
+                ),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('New visit'),
               ),
             ],
           ),
@@ -352,16 +364,18 @@ class _FamilyCard extends StatelessWidget {
   }
 }
 
-/// Visits, Reports and Appointments arrive in Phases 4–6; the tabs are in
-/// place so the layout is reviewed now.
-class _PlaceholderTabs extends StatelessWidget {
-  const _PlaceholderTabs({required this.patient});
+/// Visits (Phase 4; newest first, row opens the visit for a reprint),
+/// Reports and Appointments (placeholders until Phases 5 and 6).
+class _Tabs extends StatelessWidget {
+  const _Tabs({required this.vm, required this.role});
 
-  final Patient patient;
+  final PatientDetailViewModel vm;
+  final UserRole role;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final visits = vm.visits;
     return DefaultTabController(
       length: 3,
       child: Card(
@@ -369,26 +383,40 @@ class _PlaceholderTabs extends StatelessWidget {
         child: Column(
           children: [
             TabBar(
-              tabs: const [
-                Tab(text: 'Visits'),
-                Tab(text: 'Reports'),
-                Tab(text: 'Appointments'),
+              tabs: [
+                Tab(
+                  text: visits.isEmpty ? 'Visits' : 'Visits (${visits.length})',
+                ),
+                const Tab(text: 'Reports'),
+                const Tab(text: 'Appointments'),
               ],
               labelColor: scheme.primary,
             ),
-            const SizedBox(
-              height: 220,
+            SizedBox(
+              height: 320,
               child: TabBarView(
                 children: [
-                  _ComingSoon(
-                    icon: Icons.receipt_long_outlined,
-                    text: 'Visits — coming in Phase 4',
-                  ),
-                  _ComingSoon(
+                  if (visits.isEmpty)
+                    const EmptyState(
+                      icon: Icons.receipt_long_outlined,
+                      title: 'No visits yet',
+                    )
+                  else
+                    ListView.separated(
+                      itemCount: visits.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (_, i) => VisitRow(
+                        visit: visits[i],
+                        showDate: true,
+                        onTap: () =>
+                            context.go(AppRoutes.visitFor(role, visits[i].id)),
+                      ),
+                    ),
+                  const _ComingSoon(
                     icon: Icons.description_outlined,
                     text: 'Reports — coming in Phase 5',
                   ),
-                  _ComingSoon(
+                  const _ComingSoon(
                     icon: Icons.event_outlined,
                     text: 'Appointments — coming in Phase 6',
                   ),

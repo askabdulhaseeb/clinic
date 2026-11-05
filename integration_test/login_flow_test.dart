@@ -80,7 +80,7 @@ void main() {
     await tester.tap(find.text('Save password'));
     await waitFor(
       tester,
-      find.text('Visits — coming soon'),
+      find.byKey(const Key('visits-new')),
       timeout: const Duration(seconds: 40),
     );
 
@@ -93,7 +93,7 @@ void main() {
     await typeInto(tester, find.byType(TextFormField).at(1), 'Temp12345');
     await typeInto(tester, find.byType(TextFormField).at(2), 'Temp12345');
     await tester.tap(find.text('Save password'));
-    await waitFor(tester, find.text('Visits — coming soon'));
+    await waitFor(tester, find.byKey(const Key('visits-new')));
     await signOut(tester);
   }, timeout: testTimeout);
 

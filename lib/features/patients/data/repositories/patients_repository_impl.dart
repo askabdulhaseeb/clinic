@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/errors/firestore_errors.dart';
+import '../../../../core/firebase/offline_write.dart';
 import '../../../../core/utils/search_keys.dart';
 import '../../domain/entities/family.dart';
 import '../../domain/entities/patient.dart';
@@ -188,15 +189,18 @@ class PatientsRepositoryImpl implements PatientsRepository {
       );
     }
     final ref = _families.doc();
-    await ref.set({
-      'phone': input.phone,
-      'headName': input.headName.trim(),
-      'address': input.address.trim(),
-      'patientCount': 0,
-      'duplicatePhone': false,
-      'branchId': 'main',
-      ..._createStamp(uid),
-    });
+    // Offline-first: never wait for the server acknowledgement (§9).
+    await commitOrQueue(
+      ref.set({
+        'phone': input.phone,
+        'headName': input.headName.trim(),
+        'address': input.address.trim(),
+        'patientCount': 0,
+        'duplicatePhone': false,
+        'branchId': 'main',
+        ..._createStamp(uid),
+      }),
+    );
     return ref.id;
   });
 
@@ -226,7 +230,7 @@ class PatientsRepositoryImpl implements PatientsRepository {
       'patientCount': FieldValue.increment(1),
       ..._updateStamp(uid),
     });
-    await batch.commit();
+    await commitOrQueue(batch.commit());
     return ref.id;
   });
 
@@ -241,10 +245,12 @@ class PatientsRepositoryImpl implements PatientsRepository {
         final family = await _requireFamily(
           _families.doc((data['familyId'] as String?) ?? ''),
         );
-        await ref.update({
-          ..._patientFields(input, family.phone),
-          ..._updateStamp(uid),
-        });
+        await commitOrQueue(
+          ref.update({
+            ..._patientFields(input, family.phone),
+            ..._updateStamp(uid),
+          }),
+        );
       });
 
   @override
@@ -253,11 +259,13 @@ class PatientsRepositoryImpl implements PatientsRepository {
     required String headName,
     required String address,
   }) => _guard(() async {
-    await _families.doc(familyId).update({
-      'headName': headName.trim(),
-      'address': address.trim(),
-      ..._updateStamp(_uid),
-    });
+    await commitOrQueue(
+      _families.doc(familyId).update({
+        'headName': headName.trim(),
+        'address': address.trim(),
+        ..._updateStamp(_uid),
+      }),
+    );
   });
 
   @override
@@ -289,7 +297,7 @@ class PatientsRepositoryImpl implements PatientsRepository {
         ..._updateStamp(uid),
       });
     }
-    await batch.commit();
+    await commitOrQueue(batch.commit());
   });
 
   @override
@@ -320,7 +328,7 @@ class PatientsRepositoryImpl implements PatientsRepository {
         ..._updateStamp(uid),
       });
     }
-    await batch.commit();
+    await commitOrQueue(batch.commit());
   });
 
   // ----- helpers ----------------------------------------------------------

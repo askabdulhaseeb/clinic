@@ -1,6 +1,6 @@
 # Development Plan
 
-Draft v6 — 4 Nov 2026. v6: Phase 3 built (families, patients, search, patient page, patient-number and duplicate-phone triggers, offline cache listeners). v5: Phase 2 built (settings, catalog, first-run setup, doctor picker, shared integration helpers). v4: budget decisions (Storage bucket us-central1, no backup, typed-only prescriptions, incremental summaries) applied to phases and setup steps. Companion to [FEATURES.md](FEATURES.md) and [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md). This document fixes the technical choices for the Flutter code and the order in which features are built.
+Draft v7 — 4 Nov 2026. v7: Phase 4 decisions and build notes (visit flow, receipt PDF, queue, summary, sync badge, offline integration test). v6: Phase 3 built (families, patients, search, patient page, patient-number and duplicate-phone triggers, offline cache listeners). v5: Phase 2 built (settings, catalog, first-run setup, doctor picker, shared integration helpers). v4: budget decisions (Storage bucket us-central1, no backup, typed-only prescriptions, incremental summaries) applied to phases and setup steps. Companion to [FEATURES.md](FEATURES.md) and [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md). This document fixes the technical choices for the Flutter code and the order in which features are built.
 
 ---
 
@@ -24,6 +24,7 @@ Draft v6 — 4 Nov 2026. v6: Phase 3 built (families, patients, search, patient 
 | Cloud Functions runtime | 2nd gen, TypeScript, Node 22 runtime (local Node 24 is fine for tooling). |
 | Test admin (dev only) | Decided 2 Nov 2026: the login screen shows a **Create test admin** button in debug builds only (`kDebugMode`). It calls `createTestAdmin`, which creates or restores `admin@mytester.com` / `1234567890` as an active admin, then signs in. The function only works while `functions/.env` has `ALLOW_TEST_ADMIN=true`. Phase 9 turns it off and deletes the account. Needs the function deployed (owner) to work against the live project; works on the emulators today. |
 | Version control | Git initialised by the owner on 31 Oct 2026, branch `main`. Commit at the end of each phase at least. |
+| Phase 4 decisions (4 Nov 2026) | Reception may move visits to in progress and completed (rules opened for `status`, `startedAt`, `completedAt`). Discount reasons are a preset list plus Other with free text (`DiscountReasons`). Shift summary is clinic-wide with a "My visits only" switch. Fee is read-only on the form; a missing fee blocks save. Visits page lists today only; history and reprint live on the patient page. One `TodayVisitsController` holds the today's-visits listener for the list, queue, summary, sync badge and the waiting count. Tokens come from a cache-only query. Receipt PDF is built with `pdf` behind a `ReceiptPrinter` abstraction (`printing` in the app, a fake in tests). Offline is exercised in the Chrome test with `disableNetwork()` / `enableNetwork()` on the Firestore instance. Reception writes go through `commitOrQueue` (wait 1.5 s for the server, then treat as queued) because Firestore only resolves write futures on acknowledgement; applied to the Phase 3 patient writes too. Admin gets the same visit routes under `/admin/visits/...` since Admin may create visits too; `/admin/visits` itself stays a placeholder until Phase 8. |
 | Phase 2 decisions (3 Nov 2026) | Doctor ↔ login link is kept by `createUser` / `setUserRoles` (one login per doctor; the user form has a doctor picker, the doctor form shows the link read-only). First run: banner on Admin pages plus `/admin/setup`, no forced redirect. Department code editable with a warning; doctors' `departmentCode` is rewritten in the same batch. Logo upload goes through a `FileStore` abstraction (`core/storage/file_store.dart`) so tests use an in-memory store. Catalog screens share loading state through the `CatalogData` mixin; each list screen has a dialog (departments) or a full page with `PageHeader` (doctors, visit types). |
 
 ---
@@ -202,11 +203,15 @@ Status 4 Nov 2026: built test-first (repository on fake Firestore, view models a
 - Tests: `integration_test/reception_patients_flow_test.dart` (register family and patient, number assigned by the trigger, add member, change phone, move patient, search by phone and name).
 
 ### Phase 4 — Reception visit flow
-- New visit: patient → doctor → visit type → fee auto → discount + reason → payment method → token.
-- Receipt PDF (A4, copy count), print.
-- Today's queue per doctor, status changes, visit list for the day.
-- Shift summary screen.
-- Offline behaviour verified by integration test with network disabled.
+Status 5 Nov 2026: built test-first (seams agreed with the owner: domain pricing/token/receipt, `VisitsRepositoryImpl` on fake Firestore, view models and views, rules on the emulator plus a Chrome flow with offline): 311 Flutter unit + widget tests, 117 Functions/rules tests, 11 integration flows in four files, all green headless on Chrome (`integration_test/reception_visit_flow_test.dart`: walk-in visit with discount and JazzCash → token dialog → detail → patient tab → queue Start/Complete → summary; offline visit with `disableNetwork()` → next token → badge Syncing 1 → Online after reconnect). Remaining before Phase 4 is called done: owner screen review and a rules deploy (owner: `firebase deploy --only firestore:rules`). Found while testing: Firestore write futures never resolve offline, so repositories now use `commitOrQueue` (also applied to the Phase 3 patient writes).
+
+- New visit (`/reception/visits/new?patientId=`): patient → department → doctor (with "waiting now") → visit type → fee auto (read-only) → discount amount or percent + preset reason or Other → payment method with optional reference → copies → Save / Save and print → token dialog with receipt preview.
+- Receipt PDF (A4, one page per copy) built on the client with `pdf`, printed through `printing`; reprint from the visit detail page and the patient page's Visits tab.
+- Today's visits list, queue board (one column per doctor with visits today, toggle to show all active doctors) with Start / Complete actions, status chips.
+- Shift summary screen: visits, cash, per-method totals, discounts; "My visits only" switch.
+- `SyncBadge` in the top bar (Online / Offline / Syncing N) driven by the today's-visits listener (resolves §9 open point 3).
+- Patient page Visits tab and the search row's New visit button go live.
+- Rules for `visits`; rules tests; `integration_test/reception_visit_flow_test.dart` including an offline visit (network disabled, token still issued, badge shows pending, syncs on reconnect).
 
 ### Phase 5 — Doctor
 - Own queue, patient history across departments.
@@ -247,7 +252,7 @@ Status 4 Nov 2026: built test-first (repository on fake Firestore, view models a
 | Unit | Use cases, view models, utils (fee math, token, patient number, search keys, Karachi dates, summary deltas) | `flutter_test`, `mocktail` | Local, no Firebase |
 | Data | Repositories against in-memory Firestore | `fake_cloud_firestore` | Local |
 | Widget | Every screen with mocked view models: renders, validation, role visibility | `flutter_test` | Local |
-| Integration | Login → create visit → print receipt; offline visit creation; doctor prescription; sale | `integration_test` on Chrome via `tool/integration_test_web.sh` (`flutter drive -d web-server` + ChromeDriver); Android emulator later. Never `pumpAndSettle` (focused fields never settle on web): poll with the `waitFor` helpers in `integration_test/login_flow_test.dart`. | Firestore **emulator** with seed data |
+| Integration | Login → create visit → token → queue → summary; offline visit creation (`disableNetwork`); doctor prescription; sale | `integration_test` on Chrome via `tool/integration_test_web.sh` (`flutter drive -d web-server` + ChromeDriver); Android emulator later. Never `pumpAndSettle` (focused fields never settle on web): poll with the `waitFor` helpers in `integration_test/login_flow_test.dart`. | Firestore **emulator** with seed data |
 | Rules | Allow/deny matrix per collection from FIREBASE_ARCHITECTURE §6 | `@firebase/rules-unit-testing` | Emulator |
 | Functions | Each function with emulated Firestore | Jest | Emulator |
 
@@ -270,7 +275,7 @@ Coverage is not a target number. Every phase's listed flows must have a test bef
 
 1. **Theme colour editable by Admin** was not chosen. Teal is fixed in code for v1.
 2. **Google Analytics** on the Firebase project is optional and unused by the app.
-3. **Shell online/offline badge (`SyncBadge`)**: UI_DESIGN §2 puts it in the top bar, but the pending-write count it shows comes from the offline visit flow. Not built in Phase 1; owner to pick: build in Phase 4 with the offline work (proposed), or add an online-only badge now.
+3. **Shell online/offline badge (`SyncBadge`)**: resolved 4 Nov 2026, built in Phase 4 on the today's-visits listener (FIREBASE_ARCHITECTURE §9).
 4. **Sidebar version footer** (`v1.0.0` in UI_DESIGN §2.1) is not shown yet; needs `package_info_plus` or a build-time constant. Owner to confirm it is wanted.
 5. **macOS desktop integration run** (`flutter test integration_test -d macos`) signs in but never reaches the role home on 2 Nov 2026; not investigated because tests run on Chrome (see Phase 1). Revisit only if a desktop target is ever needed.
 

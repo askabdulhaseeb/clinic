@@ -25,6 +25,9 @@ import 'features/settings/domain/repositories/settings_repository.dart';
 import 'features/settings/presentation/viewmodels/settings_controller.dart';
 import 'features/users/data/repositories/user_admin_repository_impl.dart';
 import 'features/users/domain/repositories/user_admin_repository.dart';
+import 'features/visits/data/repositories/visits_repository_impl.dart';
+import 'features/visits/domain/repositories/visits_repository.dart';
+import 'features/visits/presentation/viewmodels/today_visits_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,6 +63,9 @@ Future<void> main() async {
           create: (_) =>
               PatientsRepositoryImpl(firestore: firestore, auth: auth),
         ),
+        Provider<VisitsRepository>(
+          create: (_) => VisitsRepositoryImpl(firestore: firestore, auth: auth),
+        ),
         Provider<SettingsRepository>(
           create: (_) => SettingsRepositoryImpl(
             firestore: firestore,
@@ -86,6 +92,15 @@ Future<void> main() async {
           lazy: false,
           create: (context) => PatientCacheController(
             repository: context.read<PatientsRepository>(),
+            session: context.read<SessionController>(),
+          ),
+        ),
+        // One listener on today's visits for reception and admin sessions:
+        // visits list, queue, summary, sync badge (FIREBASE_ARCHITECTURE §9).
+        ChangeNotifierProvider<TodayVisitsController>(
+          lazy: false,
+          create: (context) => TodayVisitsController(
+            repository: context.read<VisitsRepository>(),
             session: context.read<SessionController>(),
           ),
         ),

@@ -1,6 +1,6 @@
 # UI Design
 
-**Status:** Draft v3 — 4 Nov 2026 (Phase 3 screens: patient search, registration form, patient page, family dialogs). v2 — 3 Nov 2026 (Phase 2 screens: catalog tabs, forms, settings, first-run setup). Companion to [FEATURES.md](FEATURES.md) (what each screen does) and [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) (theme, packages, phases). This document fixes how screens are laid out and how users move between them. Screens are still reviewed one by one by the owner as they are built; this document is the starting point, not a pixel spec.
+**Status:** Draft v4 — 4 Nov 2026 (Phase 4 screens: new visit form, token dialog, visits list, queue board, shift summary, visit detail, sync badge). v3 — 4 Nov 2026 (Phase 3 screens: patient search, registration form, patient page, family dialogs). v2 — 3 Nov 2026 (Phase 2 screens: catalog tabs, forms, settings, first-run setup). Companion to [FEATURES.md](FEATURES.md) (what each screen does) and [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) (theme, packages, phases). This document fixes how screens are laid out and how users move between them. Screens are still reviewed one by one by the owner as they are built; this document is the starting point, not a pixel spec.
 
 ---
 
@@ -187,10 +187,18 @@ Payment      (Cash) (Bank) (JazzCash) (Easypaisa)   Ref [        ]
                                        [ Save and print ]  [ Save ]
 ```
 
-After save: dialog with the token in large type (`E-12`), receipt preview, copy stepper, Print and Done.
+The fee is read-only; when the doctor has no fee for the chosen type the row says "No fee set — ask Admin" and Save stays disabled. Discount reason is a dropdown of presets plus Other, which reveals a text field. Payment reference appears for bank, JazzCash and Easypaisa. The doctor row shows "Waiting now: N" from today's visits.
+
+After save: dialog with the token in large type (`E-12`), patient and doctor line, amounts, copy stepper (defaults to Settings), Print and Done. Done goes to the visit detail page; the dialog also has "New visit for another patient" back to search.
+
+**Visits list** (`/reception/visits`): today's visits newest first as a table (token chip, time, patient, doctor, type, net, payment, status chip) or cards on phones; filter field for patient name or token; New visit button opens patient search. Row opens the visit detail.
+
+**Visit detail** (`/reception/visits/:id`): `PageHeader` with the token, patient header, visit card (doctor, department, type, amounts, payment, status chip, created by and time) and a receipt card with a copy stepper and Print (decided 4 Nov 2026: this is where reprints happen).
+
+**Shift summary** (`/reception/summary`): tiles for Visits, Collected (net), Cash, Bank, JazzCash, Easypaisa and Discounts for today, plus a table of visits per doctor. Switch "My visits only" at the top (decided 4 Nov 2026).
 
 ### 4.4 Queue board (Reception)
-One column per doctor on duty today. Column header: doctor name, department chip, counts waiting / in progress / done. Rows: token chip, patient name, time since created. Updates live.
+One column per doctor with a visit today (toggle "Show all doctors" adds active doctors without visits; resolves §8 open point 2). Column header: doctor name, department chip, counts waiting / in progress / done. Rows: token chip, patient name, visit type, time since created, status chip, and a Start (waiting → in progress) or Complete (in progress → completed) button; completed rows collapse under "Done" at the bottom of the column. Updates live from the today's-visits listener. Decided 4 Nov 2026: reception may change status here.
 
 ### 4.5 Doctor queue (Doctor)
 List of waiting visits in token order with a large token chip, patient name, age and gender, visit type. Tapping opens the consultation and moves the visit to in progress. Completed visits of today collapse under a "Done today" section.
@@ -257,7 +265,7 @@ Three sections: Appointments tomorrow, Follow-ups due, Post-op follow-ups due. E
 | `StatusChip` | Visit, appointment, operation statuses. |
 | `EmptyState` | Icon, title, hint, optional action. |
 | `ConfirmDialog` | Title, message, optional required reason field, destructive style. |
-| `SyncBadge` | Online / Offline / Syncing N. |
+| `SyncBadge` | Online / Offline / Syncing N in the top bar, from `TodayVisitsController` (Phase 4). |
 | `KarachiDatePicker` | Date picker that returns `YYYY-MM-DD`. |
 | `PatientHeader` | Name, age, gender, patient ID, phone. Used by visit, consultation, sale. |
 | `DepartmentChip` | Department name in its colour. |
@@ -290,5 +298,5 @@ Both are A4 portrait PDFs generated with `pdf` and shown with `printing`.
 
 ## 8. Open Points
 
-1. Logo size and placement on receipt will be tuned once the owner supplies the real logo.
-2. Whether the reception queue board should show all doctors or only doctors with visits today. Default: doctors with at least one visit today, plus a toggle to show all active doctors.
+1. Logo size and placement on receipt will be tuned once the owner supplies the real logo. Phase 4 prints the receipt without the logo (fetching the uploaded image for the PDF needs an offline-safe cache; the clinic name, address and phone print).
+2. Resolved 4 Nov 2026: the queue board shows doctors with at least one visit today, plus a "Show all doctors" toggle (§4.4).

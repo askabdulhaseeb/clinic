@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mocktail/mocktail.dart';
 import 'package:provider/provider.dart';
 import 'package:ramzan/core/routing/app_routes.dart';
 import 'package:ramzan/core/routing/shells/app_shell.dart';
@@ -9,6 +12,8 @@ import 'package:ramzan/features/auth/domain/entities/app_user.dart';
 import 'package:ramzan/features/auth/domain/entities/user_role.dart';
 import 'package:ramzan/features/auth/presentation/viewmodels/session_controller.dart';
 import 'package:ramzan/features/settings/presentation/viewmodels/settings_controller.dart';
+import 'package:ramzan/features/visits/domain/repositories/visits_repository.dart';
+import 'package:ramzan/features/visits/presentation/viewmodels/today_visits_controller.dart';
 
 import '../../helpers/fakes.dart';
 
@@ -24,6 +29,7 @@ void main() {
     required String location,
     required Size size,
     SettingsController? settings,
+    TodayVisitsController? today,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -61,6 +67,8 @@ void main() {
           ChangeNotifierProvider<SessionController>.value(value: session!),
           if (settings != null)
             ChangeNotifierProvider<SettingsController>.value(value: settings),
+          if (today != null)
+            ChangeNotifierProvider<TodayVisitsController>.value(value: today),
         ],
         child: MaterialApp.router(
           theme: AppTheme.light(),
@@ -147,6 +155,57 @@ void main() {
     await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
     expect(repo.signOutCount, 1);
+  });
+
+  group('sync badge (Phase 4)', () {
+    testWidgets('follows the today\'s-visits listener state', (tester) async {
+      final visits = MockVisitsRepository();
+      final day = StreamController<DayVisits>.broadcast();
+      addTearDown(day.close);
+      when(() => visits.watchVisitsOn(any())).thenAnswer((_) => day.stream);
+      final session = await tester.runAsync(
+        () => signedInSession(repo, receptionUser),
+      );
+      final today = TodayVisitsController(
+        repository: visits,
+        session: session!,
+        dateCheckInterval: Duration.zero,
+      );
+      addTearDown(today.dispose);
+      await pumpShell(
+        tester,
+        user: receptionUser,
+        role: UserRole.reception,
+        location: AppRoutes.doctorQueue,
+        size: const Size(1280, 800),
+        today: today,
+      );
+      expect(find.byKey(const Key('sync-badge')), findsOneWidget);
+      expect(find.text('Online'), findsOneWidget);
+
+      day.add(const DayVisits(visits: [], pendingWrites: 2, fromCache: true));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Syncing 2'), findsOneWidget);
+
+      day.add(const DayVisits(visits: [], pendingWrites: 0, fromCache: true));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Offline'), findsOneWidget);
+    });
+
+    testWidgets('is hidden without a controller (doctor sessions)', (
+      tester,
+    ) async {
+      await pumpShell(
+        tester,
+        user: adminUser,
+        role: UserRole.admin,
+        location: AppRoutes.adminDashboard,
+        size: const Size(1280, 800),
+      );
+      expect(find.byKey(const Key('sync-badge')), findsNothing);
+    });
   });
 
   group('settings-aware shell (Phase 2)', () {
