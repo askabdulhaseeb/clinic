@@ -12,6 +12,11 @@ abstract final class ExpenseModel {
     source: ExpenseSource.parse(map['source']),
     refId: map['refId'] as String?,
     deleted: (map['deleted'] as bool?) ?? false,
+    deleteReason: (map['deleteReason'] as String?) ?? '',
+    deletedBy: map['deletedBy'] as String?,
+    deletedAt: map['deletedAt'] is Timestamp
+        ? (map['deletedAt'] as Timestamp).toDate().toUtc()
+        : null,
     createdBy: (map['createdBy'] as String?) ?? '',
     createdAt: map['createdAt'] is Timestamp
         ? (map['createdAt'] as Timestamp).toDate().toUtc()

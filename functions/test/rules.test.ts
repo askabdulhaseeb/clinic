@@ -335,10 +335,9 @@ describe("master data write", () => {
 
 describe("other collections", () => {
   it("denied even for admin", async () => {
-    // `payouts` and `dailySummaries` open in Phase 8.
+    // `payouts` opens in Phase 8B.
     await assertFails(asAdmin().doc("payouts/p1").get());
     await assertFails(asAdmin().doc("payouts/p1").set({ total: 1 }));
-    await assertFails(asAlice().collection("dailySummaries").get());
     await assertFails(asAnon().doc("settings/general").get());
   });
 });
@@ -1293,6 +1292,61 @@ describe("expenses", () => {
   });
   it("nobody deletes", async () => {
     await assertFails(asAdmin().doc("expenses/e1").delete());
+  });
+
+  // Phase 8A: corrections (§4.20).
+  const manual = () => expense(ADMIN, { category: "rent", source: "manual", refId: null });
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("expenses/m1").set(manual());
+    });
+  });
+  it("admin edits the business fields of a manual expense", async () => {
+    await assertSucceeds(
+      asAdmin().doc("expenses/m1").update({ category: "utilities", amount: 700, date: "2026-11-05", note: "Power", updatedAt: new Date(), updatedBy: ADMIN })
+    );
+    await assertFails(asAlice().doc("expenses/m1").update({ amount: 700, updatedAt: new Date(), updatedBy: ALICE }));
+    await assertFails(asAdmin().doc("expenses/m1").update({ amount: 700, updatedAt: new Date(), updatedBy: ALICE }));
+    await assertFails(asAdmin().doc("expenses/m1").update({ amount: -1, updatedAt: new Date(), updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("expenses/m1").update({ category: "fun", updatedAt: new Date(), updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("expenses/m1").update({ source: "purchase", updatedAt: new Date(), updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("expenses/m1").update({ refId: "x", updatedAt: new Date(), updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("expenses/m1").update({ createdBy: ADMIN + "x", updatedAt: new Date(), updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("expenses/m1").update({ branchId: "other", updatedAt: new Date(), updatedBy: ADMIN }));
+  });
+  it("a purchase expense may only be soft deleted", async () => {
+    await assertFails(asAdmin().doc("expenses/e1").update({ amount: 1, updatedAt: new Date(), updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("expenses/e1").update({ note: "x", updatedAt: new Date(), updatedBy: ADMIN }));
+    const del = { deleted: true, deletedAt: new Date(), deletedBy: ADMIN, deleteReason: "Wrong bill", updatedAt: new Date(), updatedBy: ADMIN };
+    await assertFails(asAdmin().doc("expenses/e1").update({ ...del, deleteReason: "" }));
+    await assertFails(asAdmin().doc("expenses/e1").update({ ...del, deletedBy: ALICE }));
+    await assertFails(asAlice().doc("expenses/e1").update({ ...del, deletedBy: ALICE, updatedBy: ALICE }));
+    await assertSucceeds(asAdmin().doc("expenses/e1").update(del));
+    await assertSucceeds(asAdmin().doc("expenses/m1").update(del));
+    // Undelete is not a thing.
+    await assertFails(asAdmin().doc("expenses/e1").update({ deleted: false, updatedAt: new Date(), updatedBy: ADMIN }));
+  });
+});
+
+describe("dailySummaries and summaryEvents (Phase 8A)", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("dailySummaries/2026-11-06").set({ date: "2026-11-06", visits: 1 });
+      await ctx.firestore().doc("summaryEvents/ev1").set({ date: "2026-11-06" });
+    });
+  });
+  it("admin reads summaries, nobody else, nobody writes", async () => {
+    await assertSucceeds(asAdmin().collection("dailySummaries").where("date", ">=", "2026-11-01").get());
+    await assertFails(asAlice().doc("dailySummaries/2026-11-06").get());
+    await assertFails(asDoctor().doc("dailySummaries/2026-11-06").get());
+    await assertFails(asAdmin().doc("dailySummaries/2026-11-06").update({ visits: 2 }));
+    await assertFails(asAdmin().doc("dailySummaries/2026-11-07").set({ visits: 2 }));
+    await assertFails(asAdmin().doc("dailySummaries/2026-11-06").delete());
+  });
+  it("summaryEvents are closed to everyone", async () => {
+    await assertFails(asAdmin().doc("summaryEvents/ev1").get());
+    await assertFails(asAdmin().doc("summaryEvents/ev2").set({ date: "x" }));
+    await assertFails(asAdmin().doc("summaryEvents/ev1").delete());
   });
 });
 

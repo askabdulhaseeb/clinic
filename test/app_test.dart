@@ -6,6 +6,7 @@ import 'package:ramzan/app.dart';
 import 'package:ramzan/core/routing/app_router.dart';
 import 'package:ramzan/core/routing/app_routes.dart';
 import 'package:ramzan/core/storage/key_value_store.dart';
+import 'package:ramzan/features/analytics/domain/repositories/summaries_repository.dart';
 import 'package:ramzan/features/auth/presentation/viewmodels/session_controller.dart';
 import 'package:ramzan/features/catalog/domain/repositories/catalog_repository.dart';
 import 'package:ramzan/features/settings/domain/repositories/settings_repository.dart';
@@ -25,6 +26,14 @@ void main() {
   setUp(() => settingsRepo = FakeSettingsRepository());
   tearDown(() => settingsRepo.dispose());
 
+  // The admin home is the dashboard (Phase 8A); it reads one empty range.
+  late MockSummariesRepository summaries;
+  setUpAll(registerFinanceFallbacks);
+  setUp(() {
+    summaries = MockSummariesRepository();
+    when(() => summaries.getRange(any())).thenAnswer((_) async => []);
+  });
+
   Widget app(
     SessionController session, {
     SettingsController? settings,
@@ -36,6 +45,7 @@ void main() {
       Provider<UserAdminRepository>.value(value: MockUserAdminRepository()),
       Provider<CatalogRepository>.value(value: stubbedCatalog()),
       Provider<SettingsRepository>.value(value: settingsRepo),
+      Provider<SummariesRepository>.value(value: summaries),
       if (visits != null) Provider<VisitsRepository>.value(value: visits),
       if (settings != null)
         ChangeNotifierProvider<SettingsController>.value(value: settings),
@@ -78,7 +88,7 @@ void main() {
     );
     await tester.pumpWidget(app(session!));
     await tester.pumpAndSettle();
-    expect(find.text('Dashboard — coming soon'), findsOneWidget);
+    expect(find.byKey(const Key('dash-kpi-revenue')), findsOneWidget);
     expect(find.byType(NavigationRail), findsOneWidget);
   });
 
@@ -144,6 +154,7 @@ void main() {
           ChangeNotifierProvider<SessionController>.value(value: session!),
           Provider<CatalogRepository>.value(value: stubbedCatalog()),
           Provider<SettingsRepository>.value(value: settingsRepo),
+          Provider<SummariesRepository>.value(value: summaries),
         ],
         child: ClinicApp(
           router: buildRouter(
@@ -182,6 +193,7 @@ void main() {
           ChangeNotifierProvider<SettingsController>.value(value: settings),
           Provider<CatalogRepository>.value(value: stubbedCatalog()),
           Provider<SettingsRepository>.value(value: settingsRepo),
+          Provider<SummariesRepository>.value(value: summaries),
         ],
         child: ClinicApp(
           router: buildRouter(
@@ -192,7 +204,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Dashboard — coming soon'), findsOneWidget);
+    expect(find.byKey(const Key('dash-kpi-revenue')), findsOneWidget);
     expect(find.text('Initial setup'), findsNothing);
     settings.dispose();
   });
@@ -221,6 +233,7 @@ void main() {
           ChangeNotifierProvider<SettingsController>.value(value: settings),
           Provider<CatalogRepository>.value(value: stubbedCatalog()),
           Provider<SettingsRepository>.value(value: settingsRepo),
+          Provider<SummariesRepository>.value(value: summaries),
         ],
         child: ClinicApp(
           router: buildRouter(

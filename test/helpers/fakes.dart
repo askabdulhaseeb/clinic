@@ -10,6 +10,9 @@ import 'package:ramzan/core/read_source.dart';
 import 'package:ramzan/core/storage/image_shrinker.dart';
 import 'package:ramzan/core/storage/key_value_store.dart';
 import 'package:ramzan/core/theme/app_theme.dart';
+import 'package:ramzan/features/analytics/domain/dashboard_range.dart';
+import 'package:ramzan/features/analytics/domain/entities/daily_summary.dart';
+import 'package:ramzan/features/analytics/domain/repositories/summaries_repository.dart';
 import 'package:ramzan/features/appointments/domain/entities/appointment.dart';
 import 'package:ramzan/features/appointments/domain/repositories/appointments_repository.dart';
 import 'package:ramzan/features/auth/domain/entities/app_user.dart';
@@ -21,6 +24,8 @@ import 'package:ramzan/features/catalog/domain/entities/department.dart';
 import 'package:ramzan/features/catalog/domain/entities/doctor.dart';
 import 'package:ramzan/features/catalog/domain/entities/visit_type.dart';
 import 'package:ramzan/features/catalog/domain/repositories/catalog_repository.dart';
+import 'package:ramzan/features/finance/domain/entities/expense.dart';
+import 'package:ramzan/features/finance/domain/repositories/expenses_repository.dart';
 import 'package:ramzan/features/inventory/domain/entities/inventory_item.dart';
 import 'package:ramzan/features/inventory/domain/entities/lens_power.dart';
 import 'package:ramzan/features/inventory/domain/entities/purchase.dart';
@@ -329,6 +334,80 @@ Purchase samplePurchase({
 );
 
 class MockSalesRepository extends Mock implements SalesRepository {}
+
+class MockSummariesRepository extends Mock implements SummariesRepository {}
+
+class MockExpensesRepository extends Mock implements ExpensesRepository {}
+
+void registerFinanceFallbacks() {
+  registerFallbackValue(SummaryRange.custom('2026-11-06', '2026-11-06'));
+  registerFallbackValue(
+    const ExpenseInput(
+      category: ExpenseCategory.other,
+      amount: 0,
+      date: '2026-11-06',
+      note: '',
+    ),
+  );
+}
+
+Expense sampleExpense({
+  String id = 'exp-1',
+  ExpenseCategory category = ExpenseCategory.rent,
+  int amount = 5000,
+  String date = '2026-11-06',
+  String note = 'November rent',
+  ExpenseSource source = ExpenseSource.manual,
+  String? refId,
+  bool deleted = false,
+  String deleteReason = '',
+}) => Expense(
+  id: id,
+  category: category,
+  amount: amount,
+  date: date,
+  note: note,
+  source: source,
+  refId: refId,
+  deleted: deleted,
+  deleteReason: deleteReason,
+  createdBy: 'admin-1',
+  createdAt: DateTime.utc(2026, 11, 6, 5),
+);
+
+/// One day: two eye visits by Dr Sara (one new patient), a frame sale and
+/// rent.
+DailySummary sampleSummary({
+  String date = '2026-11-06',
+  int visits = 2,
+  int netFees = 1800,
+}) => DailySummary(
+  date: date,
+  visits: visits,
+  newPatients: 1,
+  returningPatients: visits - 1,
+  grossFees: 2000,
+  discounts: 200,
+  netFees: netFees,
+  byPayment: {'cash': netFees - 500, 'bank': 500},
+  byDepartment: {
+    'eye': FeeBucket(visits: visits, gross: 2000, discounts: 200, net: netFees),
+  },
+  byDoctor: {
+    'doctor-sara': FeeBucket(
+      visits: visits,
+      gross: 2000,
+      discounts: 200,
+      net: netFees,
+    ),
+  },
+  salesTotal: 2000,
+  salesDiscounts: 0,
+  salesByCategory: const {'frame': 2000},
+  expensesTotal: 300,
+  expensesByCategory: const {'rent': 300},
+  netProfit: netFees + 2000 - 300,
+);
 
 void registerSalesFallbacks() {
   registerFallbackValue(
@@ -919,6 +998,8 @@ Widget wrapWithProviders({
   InventoryRepository? inventoryRepository,
   InventoryController? inventoryController,
   SalesRepository? salesRepository,
+  SummariesRepository? summariesRepository,
+  ExpensesRepository? expensesRepository,
   DevToolsRepository? devTools,
   Size size = const Size(1280, 800),
 }) {
@@ -955,6 +1036,10 @@ Widget wrapWithProviders({
         ),
       if (salesRepository != null)
         Provider<SalesRepository>.value(value: salesRepository),
+      if (summariesRepository != null)
+        Provider<SummariesRepository>.value(value: summariesRepository),
+      if (expensesRepository != null)
+        Provider<ExpensesRepository>.value(value: expensesRepository),
       if (devTools != null) Provider<DevToolsRepository>.value(value: devTools),
     ],
     child: MediaQuery(

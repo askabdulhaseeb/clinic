@@ -8,10 +8,16 @@ initializeApp();
 
 // Phase 1: createUser, setUserRoles, resetUserPassword (users.ts)
 // Phase 3: assignPatientNo, checkDuplicateFamilyPhone (patients.ts, families.ts)
-// Phase 8: applyDailySummaryDelta, recomputeDay (summaries.ts)
+// Phase 8A: applyDailySummaryDelta (three triggers), recomputeDay (summaries.ts)
 // Phase 9: audit*                              (audit.ts)
 export { createUser, setUserRoles, resetUserPassword } from "./users";
 export { assignPatientNo } from "./patients";
 export { checkDuplicateFamilyPhone } from "./families";
+export {
+  applyVisitSummaryDelta,
+  applySaleSummaryDelta,
+  applyExpenseSummaryDelta,
+  recomputeDay,
+} from "./summaries";
 // Development helper, enabled by ALLOW_TEST_ADMIN in functions/.env (test_admin.ts)
 export { createTestAdmin } from "./test_admin";

@@ -38,7 +38,7 @@ void main() {
     await tester.tap(find.byKey(const Key('setup-run')));
     await waitFor(
       tester,
-      find.text('Dashboard — coming soon'),
+      find.byKey(const Key('dash-kpi-revenue')),
       timeout: const Duration(seconds: 40),
     );
     await waitForGone(tester, find.byKey(const Key('setup-banner')));
@@ -72,7 +72,7 @@ void main() {
   ) async {
     await app.main();
     await signIn(tester, 'admin@clinic.test', 'Admin12345');
-    await waitFor(tester, find.text('Dashboard — coming soon'));
+    await waitFor(tester, find.byKey(const Key('dash-kpi-revenue')));
 
     // Catalog → Departments: the seed plus a new one.
     await tester.tap(find.text('Catalog'));

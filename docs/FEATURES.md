@@ -1,6 +1,6 @@
 # Clinic Management App — Feature Specification
 
-**Status:** Draft v13 — 6 Nov 2026. v13: Phase 6B decisions (reminder sections and sent rows, overdue group, doctor's upcoming page under More). v12: Phase 6A decisions (two checkpoints, Arrived opens the new-visit form, day view per doctor, linked rows, booking from the patient, reception post-op days on the row). v11: Phase 5B decisions (surgery day booked as an appointment, surgeon picker, automatic visit–operation link, soft report deletes by reception, upload from the patient page, strict checklist with override). v10: Phase 5 decisions (two checkpoints 5A/5B, follow-ups become appointments at once, Save and Complete separate, same-day prescription edits, quick follow-up chips, doctor summary with own fees). v9: Phase 4 decisions (reception may move visits through the queue, preset discount reasons, clinic-wide shift summary with a personal toggle, sync badge built with the visit flow). v8: Phase 3 decisions (age stored as an approximate date of birth, family phone clash blocked when online, placeholder tabs on the patient page). v7: Phase 2 decisions (doctor–login link kept by Cloud Functions, first-run setup banner, editable department code, WhatsApp template placeholders). v6: budget decisions — prescriptions are typed only (no photos), no managed backup, dashboard totals kept by increments, Storage bucket in a US region for the no-cost quota. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
+**Status:** Draft v14 — 6 Nov 2026. v14: Phase 8A decisions (two checkpoints, dashboard ranges without a cap, expenses by day, manual expenses editable and others delete-only, same-department doctor change on visit corrections). v13: Phase 6B decisions (reminder sections and sent rows, overdue group, doctor's upcoming page under More). v12: Phase 6A decisions (two checkpoints, Arrived opens the new-visit form, day view per doctor, linked rows, booking from the patient, reception post-op days on the row). v11: Phase 5B decisions (surgery day booked as an appointment, surgeon picker, automatic visit–operation link, soft report deletes by reception, upload from the patient page, strict checklist with override). v10: Phase 5 decisions (two checkpoints 5A/5B, follow-ups become appointments at once, Save and Complete separate, same-day prescription edits, quick follow-up chips, doctor summary with own fees). v9: Phase 4 decisions (reception may move visits through the queue, preset discount reasons, clinic-wide shift summary with a personal toggle, sync badge built with the visit flow). v8: Phase 3 decisions (age stored as an approximate date of birth, family phone clash blocked when online, placeholder tabs on the patient page). v7: Phase 2 decisions (doctor–login link kept by Cloud Functions, first-run setup banner, editable department code, WhatsApp template placeholders). v6: budget decisions — prescriptions are typed only (no photos), no managed backup, dashboard totals kept by increments, Storage bucket in a US region for the no-cost quota. Storage design is in [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
 **Project:** `ramzan` (Flutter). Clinic name is not hard-coded; Admin sets it in Settings and it appears on receipts and the app header.
 
 This document is the source of truth for what the app does. Code follows this document. Anything not written here is not a requirement yet.
@@ -47,9 +47,9 @@ Reception runs on the **web** at the front desk and must keep working **offline*
 | Operations | Schedule a date, pre-op checklist (Admin and doctors maintain the default list), post-op follow-up reminders (default days per operation type, changeable per patient). |
 | Inventory | Homeo medicines, frames, lenses stocked by power (SPH/CYL), consumables. No batch or expiry tracking. Suppliers and purchase bills tracked; a purchase creates an expense. Decided 6 Nov 2026: lens grid SPH −20.00 to +20.00, CYL 0.00 to −8.00, step 0.25; a sale with short stock warns but is allowed; purchase bills cannot be edited after saving. |
 | Doctor pay | Salary plus percentage of fees. Admin chooses per doctor whether the percentage applies to gross fee or net fee after discount. Payouts are for any date range Admin picks. |
-| Analytics | Revenue, patient counts, discounts, expenses and net profit. Read from daily summaries, updated within seconds of each transaction. Timezone Asia/Karachi. |
+| Analytics | Revenue, patient counts, discounts, expenses and net profit. Read from daily summaries, updated within seconds of each transaction. Timezone Asia/Karachi. Decided 6 Nov 2026: dashboard ranges are Today, This week (from Monday), This month and Custom with no cap on the span; Revenue = visit net fees + sales total, Discounts = visit discounts + sale discounts, Net profit = revenue − expenses; charts drawn with `fl_chart`. |
 | Patient reminders | WhatsApp via WhatsApp Web already open on the reception PC. App opens a pre-filled message, staff press send. No Business API. Admin can turn each reminder type on or off. |
-| Edit/delete visits | Admin only. Delete is a soft delete with a reason; the record stays visible to Admin. |
+| Edit/delete visits | Admin only. Delete is a soft delete with a reason; the record stays visible to Admin. Decided 6 Nov 2026 (for Phase 8B): the doctor may be changed only to one in the same department; Admin finds visits by day with a text filter. |
 | Old data | None. New clinic, start fresh. |
 | Reception devices | One reception device for now. Offline token conflicts between devices are not handled in v1. |
 | Doctor sees money | Yes. Doctor sees fee, discount, and net paid on each visit. |
@@ -259,12 +259,13 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 ## 7. Admin Features
 
 ### 7.1 Dashboard
-- Today, this week, this month, custom range.
-- Revenue total, by department, by doctor, by payment method.
-- Visits count, new vs returning patients.
-- Discounts total and count.
-- Expenses total and net profit.
-- Low-stock alerts.
+- Today, this week (from Monday), this month, custom range (any span; decided 6 Nov 2026).
+- Revenue total (visit net fees + sales), by department, by doctor, by payment method.
+- Visits count, new vs returning patients, visits per day.
+- Discounts total (visits and sales).
+- Expenses total and net profit (revenue − expenses).
+- Low-stock alerts (items at or below their threshold).
+- Recompute day: repairs one day's summary from its visits, sales and expenses when a total looks wrong.
 
 ### 7.2 Users and roles
 - Create user with email and temporary password. Assign one or more roles. Link to a doctor record where applicable.
@@ -278,7 +279,7 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - Deactivation only, no deletes. Inactive records are hidden from pickers and lists unless "Show inactive" is on.
 
 ### 7.4 Visits and corrections
-- Search any visit. Edit fee, discount, payment method, doctor, or delete. Every change is written to the audit log with the reason.
+- Search any visit: pick a day, filter the day's list by name, number, phone or token (decided 6 Nov 2026). Edit fee, discount, payment method, doctor (same department only), or delete. Every change is written to the audit log with the reason.
 
 ### 7.5 Inventory
 - Add items with category, prices, unit, low-stock threshold, brand, and an opening stock on creation (recorded as an "Opening stock" adjustment). Items are deactivated, never deleted.
@@ -289,7 +290,7 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - Low-stock filter on each category list (stock at or below the item's threshold); the dashboard card arrives in Phase 8.
 
 ### 7.6 Expenses and doctor payouts
-- Record expenses by category with date and note.
+- Record expenses by category with date and note. The list shows one day at a time. Decided 6 Nov 2026: a manual expense may be edited and soft deleted with a reason; an expense created by a purchase or a payout may only be soft deleted (the bill or payout stays the record).
 - Doctor payout for any date range Admin picks: salary amount (prefilled, editable) plus percentage of that doctor's fees in the range, on gross or net basis as configured. Mark as paid. Paid payouts become expenses automatically.
 
 ### 7.7 Analytics and reports

@@ -10,6 +10,8 @@ rules_version = '2';
 // Phase 4: `visits`.
 // Phase 5A: `prescriptions`, `appointments`.
 // Phase 5B: `reports`, `operations`; doctors edit visit-type defaults.
+// Phase 7: `inventoryItems`, `stockMovements`, `suppliers`, `purchases`, `expenses`, `sales`.
+// Phase 8A: `expenses` corrections, `dailySummaries` (Admin read), `summaryEvents` (closed).
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -539,7 +541,35 @@ service cloud.firestore {
         && request.resource.data.deleted == false
         && inCallerBranch(request.resource.data.branchId)
         && createdByIsCaller();
-      allow update, delete: if false;
+      // Phase 8A corrections (decided 6 Nov 2026): a manual expense may be
+      // edited; purchase and payout expenses may only be soft deleted.
+      allow update: if isAdmin()
+        && !changedKeys().hasAny(['source', 'refId', 'branchId', 'createdAt', 'createdBy'])
+        && (resource.data.source == 'manual'
+            || !changedKeys().hasAny(['category', 'amount', 'date', 'note']))
+        && request.resource.data.category in ['rent', 'salary', 'utilities', 'supplies', 'purchase', 'payout', 'other']
+        && isNonNegativeInt(request.resource.data.amount)
+        && isNonEmptyString(request.resource.data.date)
+        && request.resource.data.deleted is bool
+        && (request.resource.data.deleted == false
+            ? !changedKeys().hasAny(['deleted', 'deletedAt', 'deletedBy', 'deleteReason'])
+            : (isNonEmptyString(request.resource.data.deleteReason)
+               && request.resource.data.deletedBy == request.auth.uid))
+        && updatedByIsCaller();
+      allow delete: if false;
+    }
+
+    // ----- dailySummaries/{date}, summaryEvents/{eventId}  (§4.22, §4.23) --
+    // Written only by the applyDailySummaryDelta and recomputeDay functions
+    // (admin SDK bypasses rules). Admin reads the dashboard; the event
+    // ledger is nobody's business.
+    match /dailySummaries/{date} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /summaryEvents/{eventId} {
+      allow read, write: if false;
     }
 
     // ----- sales/{saleId}  (§4.19): Phase 7B ------------------------------

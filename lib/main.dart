@@ -11,6 +11,8 @@ import 'core/firebase/firebase_bootstrap.dart';
 import 'core/storage/file_store.dart';
 import 'core/storage/image_shrinker.dart';
 import 'core/storage/key_value_store.dart';
+import 'features/analytics/data/repositories/summaries_repository_impl.dart';
+import 'features/analytics/domain/repositories/summaries_repository.dart';
 import 'features/appointments/data/repositories/appointments_repository_impl.dart';
 import 'features/appointments/domain/repositories/appointments_repository.dart';
 import 'features/auth/data/repositories/auth_repository_impl.dart';
@@ -20,6 +22,8 @@ import 'features/auth/domain/repositories/dev_tools_repository.dart';
 import 'features/auth/presentation/viewmodels/session_controller.dart';
 import 'features/catalog/data/repositories/catalog_repository_impl.dart';
 import 'features/catalog/domain/repositories/catalog_repository.dart';
+import 'features/finance/data/repositories/expenses_repository_impl.dart';
+import 'features/finance/domain/repositories/expenses_repository.dart';
 import 'features/inventory/data/repositories/inventory_repository_impl.dart';
 import 'features/inventory/domain/repositories/inventory_repository.dart';
 import 'features/inventory/presentation/viewmodels/inventory_controller.dart';
@@ -106,6 +110,16 @@ Future<void> main() async {
         ),
         Provider<SalesRepository>(
           create: (_) => SalesRepositoryImpl(firestore: firestore, auth: auth),
+        ),
+        Provider<SummariesRepository>(
+          create: (_) => SummariesRepositoryImpl(
+            firestore: firestore,
+            functions: functions,
+          ),
+        ),
+        Provider<ExpensesRepository>(
+          create: (_) =>
+              ExpensesRepositoryImpl(firestore: firestore, auth: auth),
         ),
         Provider<SettingsRepository>(
           create: (_) => SettingsRepositoryImpl(

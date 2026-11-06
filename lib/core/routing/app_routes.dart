@@ -112,6 +112,15 @@ abstract final class AppRoutes {
   static String adminInventoryPurchase(String id) =>
       '$adminInventoryPurchases/$id';
   static const String adminFinance = '/admin/finance';
+  // Admin finance (Phase 8A). `/admin/finance` redirects to expenses; the
+  // Payouts tab is a placeholder until 8B.
+  static const String adminFinanceExpenses = '/admin/finance/expenses';
+  static const String adminFinancePayouts = '/admin/finance/payouts';
+  static const String adminExpenseNew = '/admin/finance/expenses/new';
+  static const String adminExpenseEditPattern =
+      '/admin/finance/expenses/:id/edit';
+
+  static String adminExpenseEdit(String id) => '$adminFinanceExpenses/$id/edit';
   static const String adminCatalog = '/admin/catalog';
   static const String adminSettings = '/admin/settings';
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../features/analytics/presentation/screens/dashboard_screen.dart';
 import '../../features/appointments/presentation/screens/appointments_screen.dart';
 import '../../features/appointments/presentation/screens/book_appointment_screen.dart';
 import '../../features/appointments/presentation/screens/doctor_appointments_screen.dart';
@@ -13,6 +14,8 @@ import '../../features/auth/presentation/viewmodels/session_controller.dart';
 import '../../features/catalog/presentation/screens/catalog_screen.dart';
 import '../../features/catalog/presentation/screens/doctor_form_screen.dart';
 import '../../features/catalog/presentation/screens/visit_type_form_screen.dart';
+import '../../features/finance/presentation/screens/expense_form_screen.dart';
+import '../../features/finance/presentation/screens/finance_screen.dart';
 import '../../features/inventory/domain/entities/inventory_item.dart';
 import '../../features/inventory/presentation/screens/inventory_screen.dart';
 import '../../features/inventory/presentation/screens/item_detail_screen.dart';
@@ -160,6 +163,8 @@ ShellRoute _roleShell(UserRole role) {
           )
         else if (d.path == AppRoutes.adminInventory)
           GoRoute(path: d.path, redirect: (_, _) => InventoryTab.medicine.path)
+        else if (d.path == AppRoutes.adminFinance)
+          GoRoute(path: d.path, redirect: (_, _) => FinanceTab.expenses.path)
         else
           GoRoute(path: d.path, builder: (_, _) => _screenFor(d.path, d.label)),
       if (role == UserRole.admin) ..._adminRoutes(),
@@ -279,6 +284,21 @@ List<GoRoute> _doctorRoutes() => [
 /// Admin pages below the sidebar destinations (Phase 2: catalog, setup;
 /// Phase 7A: inventory).
 List<GoRoute> _adminRoutes() => [
+  // Finance tabs and the expense form (Phase 8A).
+  for (final tab in FinanceTab.values)
+    GoRoute(
+      path: tab.path,
+      builder: (_, _) => FinanceScreen(tab: tab),
+    ),
+  GoRoute(
+    path: AppRoutes.adminExpenseNew,
+    builder: (_, _) => const ExpenseFormScreen(),
+  ),
+  GoRoute(
+    path: AppRoutes.adminExpenseEditPattern,
+    builder: (_, state) =>
+        ExpenseFormScreen(expenseId: state.pathParameters['id']!),
+  ),
   // Inventory tabs; `new` routes are declared before `:id` patterns.
   for (final tab in InventoryTab.values)
     GoRoute(
@@ -364,6 +384,8 @@ List<GoRoute> _adminRoutes() => [
 
 Widget _screenFor(String path, String label) {
   switch (path) {
+    case AppRoutes.adminDashboard:
+      return const DashboardScreen();
     case AppRoutes.adminUsers:
       return const UsersScreen();
     case AppRoutes.adminSettings:

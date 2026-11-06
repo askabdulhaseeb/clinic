@@ -47,6 +47,9 @@ class Expense {
     required this.refId,
     required this.createdBy,
     this.deleted = false,
+    this.deleteReason = '',
+    this.deletedBy,
+    this.deletedAt,
     this.createdAt,
     this.branchId = 'main',
   });
@@ -63,9 +66,41 @@ class Expense {
   final ExpenseSource source;
   final String? refId;
   final bool deleted;
+  final String deleteReason;
+  final String? deletedBy;
+  final DateTime? deletedAt;
   final String createdBy;
   final DateTime? createdAt;
   final String branchId;
+
+  /// True for the manual expenses Admin may edit (FEATURES §7.6).
+  bool get isManual => source == ExpenseSource.manual;
+
+  Expense copyWith({
+    ExpenseCategory? category,
+    int? amount,
+    String? date,
+    String? note,
+    bool? deleted,
+    String? deleteReason,
+    String? deletedBy,
+    DateTime? deletedAt,
+  }) => Expense(
+    id: id,
+    category: category ?? this.category,
+    amount: amount ?? this.amount,
+    date: date ?? this.date,
+    note: note ?? this.note,
+    source: source,
+    refId: refId,
+    createdBy: createdBy,
+    deleted: deleted ?? this.deleted,
+    deleteReason: deleteReason ?? this.deleteReason,
+    deletedBy: deletedBy ?? this.deletedBy,
+    deletedAt: deletedAt ?? this.deletedAt,
+    createdAt: createdAt,
+    branchId: branchId,
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -78,6 +113,7 @@ class Expense {
       other.source == source &&
       other.refId == refId &&
       other.deleted == deleted &&
+      other.deleteReason == deleteReason &&
       other.createdBy == createdBy &&
       other.branchId == branchId;
 

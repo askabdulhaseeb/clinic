@@ -31,7 +31,7 @@ void main() {
   ) async {
     await app.main();
     await signIn(tester, 'admin@clinic.test', 'Admin12345');
-    await waitFor(tester, find.text('Dashboard — coming soon'));
+    await waitFor(tester, find.byKey(const Key('dash-kpi-revenue')));
 
     await tester.tap(find.text('Users'));
     // The first snapshot may come from the local cache; poll for both rows.
@@ -105,7 +105,7 @@ void main() {
     await tester.tap(find.byKey(const Key('create-test-admin')));
     await waitFor(
       tester,
-      find.text('Dashboard — coming soon'),
+      find.byKey(const Key('dash-kpi-revenue')),
       timeout: const Duration(seconds: 40),
     );
     await tester.tap(find.byKey(const Key('user-menu')));
