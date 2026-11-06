@@ -362,6 +362,9 @@ void main() {
       opStream.add(op);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('postop-save')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('postop-close')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('postop-save')), findsNothing);
     });
   });
 }

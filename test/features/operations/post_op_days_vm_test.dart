@@ -68,9 +68,12 @@ void main() {
     vm.dispose();
   });
 
-  test('a done or cancelled operation cannot be edited', () async {
+  test('a done operation stays editable; a cancelled one is locked', () async {
     final vm = make();
     stream.add(sampleOperation(status: OperationStatus.done));
+    await pumpEventQueue();
+    expect(vm.canEdit, isTrue, reason: 'follow-ups continue after surgery');
+    stream.add(sampleOperation(status: OperationStatus.cancelled));
     await pumpEventQueue();
     expect(vm.canEdit, isFalse);
     expect(await vm.save(), isFalse);

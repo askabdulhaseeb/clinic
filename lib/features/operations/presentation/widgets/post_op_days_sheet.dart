@@ -120,7 +120,7 @@ class _PostOpDaysSheetState extends State<PostOpDaysSheet> {
           Text(
             '${op.patientName} · surgery '
             '${KarachiDate.display(op.scheduledDate)}'
-            '${vm.canEdit ? '' : ' · ${op.status.label}'}',
+            '${op.isOpen ? '' : ' · ${op.status.label}'}',
             style: text.bodySmall?.copyWith(color: scheme.outline),
           ),
           const SizedBox(height: 12),
@@ -193,7 +193,19 @@ class _PostOpDaysSheetState extends State<PostOpDaysSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Post-op follow-ups', style: text.titleLarge),
+          Row(
+            children: [
+              Expanded(
+                child: Text('Post-op follow-ups', style: text.titleLarge),
+              ),
+              IconButton(
+                key: const Key('postop-close'),
+                tooltip: 'Close',
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.of(context).pop(false),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           body,
         ],

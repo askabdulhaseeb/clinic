@@ -54,7 +54,11 @@ class PostOpDaysViewModel extends ChangeNotifier {
   bool get dirty => !listEquals(_days, _operation?.postOpDays);
   bool get saving => _saving;
   String? get error => _error;
-  bool get canEdit => _operation?.isOpen ?? false;
+
+  /// Follow-ups continue after surgery, so a done operation's days stay
+  /// editable; only a cancelled one is locked (decided 6 Nov 2026).
+  bool get canEdit =>
+      _operation != null && _operation!.status != OperationStatus.cancelled;
 
   /// Adds a day typed as text; returns a message when it is not valid.
   String? addDay(String raw) {

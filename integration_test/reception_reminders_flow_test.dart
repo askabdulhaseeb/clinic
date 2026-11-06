@@ -74,7 +74,8 @@ void main() {
     // Reminders: the booking and Sara's surgery day are due tomorrow.
     await sidebar(tester, 'Reminders');
     await waitFor(tester, find.byKey(const Key('rem-section-tomorrow')));
-    final aliRow = rowWith(find.text('2 pm'), 'rem-row-');
+    // The row's subtitle joins number, phone, doctor, date and time.
+    final aliRow = rowWith(find.textContaining('· 2 pm'), 'rem-row-');
     await waitFor(tester, aliRow);
     expect(
       find.descendant(of: aliRow, matching: find.text('Ali Khan')),
@@ -125,7 +126,7 @@ void main() {
     await tester.tap(find.byTooltip('Change post-op days').first);
     await waitFor(tester, find.byKey(const Key('postop-day-21')));
     expect(find.byKey(const Key('postop-day-14')), findsOneWidget);
-    await tester.tapAt(const Offset(10, 10)); // dismiss the sheet
+    await tester.tap(find.byKey(const Key('postop-close')));
     await waitForGone(tester, find.byKey(const Key('postop-save')));
 
     await signOut(tester);

@@ -175,7 +175,7 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - Reschedule (date and time) or cancel a manual, follow-up or post-op appointment; mark no-show on or after the day. The surgery-day appointment is moved or cancelled from the operation.
 - Patient page Appointments tab: the patient's appointments, upcoming first, with a Book button.
 - Reminders due today (`/reception/reminders`, decided 6 Nov 2026): Appointments tomorrow (manual and surgery-day), Follow-ups due and Post-op follow-ups due (today to today + follow-up reminder days), Overdue (last 7 days). Send opens WhatsApp Web with the type's template filled in and marks the row sent; sent rows stay with the time and Send again. Hidden sections for types switched off in Settings.
-- Change post-op days: a post-op row on the day view or the patient tab opens the patient's operation days (chips, add, remove); saving re-books the post-op appointments after a confirm. The surgery-day appointment is untouched.
+- Change post-op days: a post-op row on the day view or the patient tab opens the patient's operation days (chips, add, remove); saving re-books the post-op appointments after a confirm. The surgery-day appointment is untouched. Days stay editable after the operation is done (follow-ups continue after surgery); a cancelled operation is read-only.
 
 ### 5.4 Queue management
 - Live waiting list per doctor for today, with token labels like E-12 and status.
