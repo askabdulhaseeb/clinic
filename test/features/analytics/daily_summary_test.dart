@@ -23,6 +23,8 @@ void main() {
         discountsByUser: {'rec-1': CountAmount(count: 1, amount: 200)},
         discountsByReason: {'Old patient': CountAmount(count: 1, amount: 200)},
         salesTotal: 500,
+        salesCost: 200,
+        salesCostByCategory: {'medicine': 200},
         salesDiscounts: 50,
         salesByCategory: {'medicine': 500},
         expensesTotal: 400,
@@ -68,6 +70,8 @@ void main() {
       expect(s.byDepartment['homeo']?.visits, 1);
       expect(s.byDoctor.keys, containsAll(['d1', 'd2']));
       expect(s.salesTotal, 500);
+      expect(s.salesCost, 200);
+      expect(s.salesCostByCategory, {'medicine': 200});
       expect(s.expensesTotal, 500);
       expect(s.expensesByCategory, {'rent': 460, 'other': 40});
       expect(s.discountsByUser, {

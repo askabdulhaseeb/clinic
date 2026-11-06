@@ -29,6 +29,8 @@ void main() {
     salesTotal: 2000,
     salesDiscounts: 0,
     salesByCategory: {'frame': 2000},
+    salesCost: 1250,
+    salesCostByCategory: {'frame': 1250},
     expensesTotal: 300,
     expensesByCategory: {'rent': 300},
     netProfit: 3500,
@@ -50,12 +52,14 @@ void main() {
     },
     discountsByUser: {'rec-2': CountAmount(count: 1, amount: 300)},
     discountsByReason: {'Poor patient': CountAmount(count: 1, amount: 300)},
-    salesTotal: 0,
+    salesTotal: 900,
     salesDiscounts: 0,
-    salesByCategory: {},
+    salesByCategory: {'lens': 600, 'medicine': 300},
+    salesCost: 400,
+    salesCostByCategory: {'lens': 400},
     expensesTotal: 0,
     expensesByCategory: {},
-    netProfit: 500,
+    netProfit: 1400,
   );
   final range = SummaryRange.custom('2026-10-05', '2026-10-07');
   final names = ReportNames(
@@ -98,7 +102,19 @@ void main() {
         '3500',
       ],
       ['2026-10-06', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'],
-      ['2026-10-07', '1', '0', '1', '800', '300', '500', '0', '0', '0', '500'],
+      [
+        '2026-10-07',
+        '1',
+        '0',
+        '1',
+        '800',
+        '300',
+        '500',
+        '900',
+        '0',
+        '0',
+        '1400',
+      ],
       [
         'Total',
         '3',
@@ -107,10 +123,10 @@ void main() {
         '2800',
         '500',
         '2300',
-        '2000',
+        '2900',
         '0',
         '300',
-        '4000',
+        '4900',
       ],
     ]);
   });
@@ -164,7 +180,46 @@ void main() {
     ]);
     expect(table(ReportSection.salesByCategory).rows, [
       ['Frame', '2000'],
-      ['Total', '2000'],
+      ['Lens', '600'],
+      ['Medicine', '300'],
+      ['Total', '2900'],
+    ]);
+  });
+
+  test('sales margins: sold, cost, margin and whole-percent margin', () {
+    final t = table(ReportSection.salesMargins);
+    expect(t.headers, ['Category', 'Sold', 'Cost', 'Margin', 'Margin %']);
+    // Highest margin first; a pre-Phase 10 category has no cost (full
+    // margin); 750 / 2000 = 37.5 rounds to 38.
+    expect(t.rows, [
+      ['Frame', '2000', '1250', '750', '38'],
+      ['Medicine', '300', '0', '300', '100'],
+      ['Lens', '600', '400', '200', '33'],
+      ['Total', '2900', '1650', '1250', '43'],
+    ]);
+    expect(
+      ReportCsv.encode(t),
+      'Category,Sold,Cost,Margin,Margin %\r\n'
+      'Frame,2000,1250,750,38\r\n'
+      'Medicine,300,0,300,100\r\n'
+      'Lens,600,400,200,33\r\n'
+      'Total,2900,1650,1250,43\r\n',
+    );
+    expect(
+      ReportCsv.fileName(ReportSection.salesMargins, range),
+      'sales-margins_2026-10-05_2026-10-07.csv',
+    );
+  });
+
+  test('sales margins of an empty range is a zero total', () {
+    final t = ReportTables.build(
+      ReportSection.salesMargins,
+      days: const [],
+      range: range,
+      names: names,
+    );
+    expect(t.rows, [
+      ['Total', '0', '0', '0', '0'],
     ]);
   });
 

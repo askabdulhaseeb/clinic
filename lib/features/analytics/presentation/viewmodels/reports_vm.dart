@@ -7,24 +7,30 @@ import '../../../../core/storage/file_saver.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../catalog/domain/repositories/catalog_repository.dart';
 import '../../../catalog/presentation/viewmodels/catalog_data.dart';
+import '../../../settings/domain/entities/clinic_settings.dart';
 import '../../../users/domain/repositories/user_admin_repository.dart';
+import '../../../visits/presentation/receipt/receipt_printer.dart';
 import '../../domain/dashboard_range.dart';
 import '../../domain/entities/daily_summary.dart';
 import '../../domain/report_tables.dart';
 import '../../domain/repositories/summaries_repository.dart';
+import '../pdf/report_pdf.dart';
 
 /// `/admin/reports` (FEATURES §7.7, Phase 8B): the same range presets as
 /// the dashboard, one `dailySummaries` read per range, every section as a
-/// table, each exportable as its own CSV through [FileSaver].
+/// table, each exportable as its own CSV through [FileSaver] or (Phase 10)
+/// as a PDF through [ReceiptPrinter].
 class ReportsViewModel extends ChangeNotifier with CatalogData {
   ReportsViewModel({
     required SummariesRepository summaries,
     required this.catalogRepository,
     required UserAdminRepository users,
     required FileSaver saver,
+    required ReceiptPrinter printer,
     DateTime Function()? clock,
   }) : _summaries = summaries, // ignore: prefer_initializing_formals
        _saver = saver, // ignore: prefer_initializing_formals
+       _printer = printer, // ignore: prefer_initializing_formals
        _clock = clock ?? DateTime.now {
     _range = DashboardRange.today.resolve(_clock());
     watchCatalog(doctors: true);
@@ -39,6 +45,7 @@ class ReportsViewModel extends ChangeNotifier with CatalogData {
   final CatalogRepository catalogRepository;
   final SummariesRepository _summaries;
   final FileSaver _saver;
+  final ReceiptPrinter _printer;
   final DateTime Function() _clock;
 
   StreamSubscription<List<AppUser>>? _usersSub;
@@ -124,6 +131,40 @@ class ReportsViewModel extends ChangeNotifier with CatalogData {
       return true;
     } on AppException catch (e) {
       _actionError = e.message;
+      return false;
+    } finally {
+      _exporting = false;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  /// Builds [section] as a PDF and opens the print dialog (Phase 10). True
+  /// on success; the dialog itself is the feedback, so [info] stays null.
+  Future<bool> exportPdf(
+    ReportSection section, {
+    required ClinicSettings settings,
+  }) async {
+    if (_exporting) return false;
+    _exporting = true;
+    _actionError = null;
+    _info = null;
+    notifyListeners();
+    try {
+      final bytes = await ReportPdf.build(
+        table: table(section),
+        range: _range,
+        settings: settings,
+      );
+      await _printer.print(
+        bytes: bytes,
+        name: ReportPdf.fileName(section, _range),
+      );
+      return true;
+    } on AppException catch (e) {
+      _actionError = e.message;
+      return false;
+    } catch (_) {
+      _actionError = 'Could not print. Try again.';
       return false;
     } finally {
       _exporting = false;

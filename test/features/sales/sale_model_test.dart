@@ -21,6 +21,7 @@ void main() {
         category: ItemCategory.medicine,
         qty: 2,
         unitPrice: 150,
+        unitCost: 100,
       ),
       SaleLine(
         itemId: 'singleVision|-1.25|-0.50',
@@ -28,6 +29,7 @@ void main() {
         category: ItemCategory.lens,
         qty: 1,
         unitPrice: 500,
+        unitCost: 400,
         lensKey: 'singleVision|-1.25|-0.50',
       ),
     ],
@@ -52,6 +54,7 @@ void main() {
       'category': 'medicine',
       'qty': 2,
       'unitPrice': 150,
+      'unitCost': 100,
       'lineTotal': 300,
       'lensKey': null,
     });
@@ -65,6 +68,25 @@ void main() {
     expect(back, sale);
     expect(back.items[1].lensKey, 'singleVision|-1.25|-0.50');
     expect(back.createdAt, DateTime.utc(2026, 11, 6, 6));
+  });
+
+  test('a line written before Phase 10 reads as zero cost', () {
+    final back = SaleModel.fromMap('s0', {
+      ...SaleModel.toMap(sale),
+      'items': [
+        {
+          'itemId': 'i1',
+          'name': 'Arnica 30',
+          'category': 'medicine',
+          'qty': 2,
+          'unitPrice': 150,
+          'lineTotal': 300,
+        },
+      ],
+    });
+    expect(back.items.single.unitCost, 0);
+    expect(back.items.single.lineCost, 0);
+    expect(sale.items.first.lineCost, 200);
   });
 
   test('a walk-in sale keeps a null patient and visit', () {

@@ -124,6 +124,7 @@ class NewSaleViewModel extends ChangeNotifier {
           category: item.category,
           qty: 1,
           unitPrice: item.salePrice,
+          unitCost: item.purchasePrice,
           lensKey: item.lensKey,
         ),
       );

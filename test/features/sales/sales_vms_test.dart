@@ -164,6 +164,7 @@ void main() {
         expect(vm.lines.length, 2);
         expect(vm.lines[0].qty, 2);
         expect(vm.lines[0].unitPrice, 150);
+        expect(vm.lines[0].unitCost, 100, reason: 'purchase price snapshot');
         expect(vm.lines[1].category, ItemCategory.frame);
         expect(vm.subtotal, 2300);
 
@@ -340,6 +341,7 @@ void main() {
           expect(vm.addLens(stocked), isTrue);
           expect(vm.lines.single.lensKey, stocked.key);
           expect(vm.lines.single.unitPrice, 900);
+          expect(vm.lines.single.unitCost, 400);
           expect(vm.lines.single.category, ItemCategory.lens);
           expect(vm.addLens(stocked), isTrue);
           expect(vm.lines.single.qty, 2);

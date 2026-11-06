@@ -8,6 +8,7 @@ import '../../../features/auth/domain/entities/user_role.dart';
 import '../../../features/auth/presentation/viewmodels/session_controller.dart';
 import '../../../features/settings/presentation/viewmodels/settings_controller.dart';
 import '../../../features/settings/presentation/widgets/setup_banner.dart';
+import '../../app_version.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/sync_badge.dart';
 import '../app_routes.dart';
@@ -86,26 +87,48 @@ class _WideShell extends StatelessWidget {
     return Scaffold(
       body: Row(
         children: [
-          NavigationRail(
-            extended: extended,
-            minExtendedWidth: 220,
-            selectedIndex: selectedIndex >= 0 ? selectedIndex : null,
-            onDestinationSelected: (i) => context.go(destinations[i].path),
-            labelType: extended
-                ? NavigationRailLabelType.none
-                : NavigationRailLabelType.all,
-            leading: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: _Brand(extended: extended),
-            ),
-            destinations: [
-              for (final d in destinations)
-                NavigationRailDestination(
-                  icon: Icon(d.icon),
-                  selectedIcon: Icon(d.selectedIcon),
-                  label: Text(d.label),
+          // The rail cannot scroll by itself; Admin's destinations exceed a
+          // short tablet height, so the rail scrolls and the version footer
+          // still sits at the bottom when there is room (Phase 10).
+          LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: NavigationRail(
+                    extended: extended,
+                    minExtendedWidth: 220,
+                    selectedIndex: selectedIndex >= 0 ? selectedIndex : null,
+                    onDestinationSelected: (i) =>
+                        context.go(destinations[i].path),
+                    labelType: extended
+                        ? NavigationRailLabelType.none
+                        : NavigationRailLabelType.all,
+                    leading: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: _Brand(extended: extended),
+                    ),
+                    trailing: Expanded(
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _VersionFooter(extended: extended),
+                        ),
+                      ),
+                    ),
+                    destinations: [
+                      for (final d in destinations)
+                        NavigationRailDestination(
+                          icon: Icon(d.icon),
+                          selectedIcon: Icon(d.selectedIcon),
+                          label: Text(d.label),
+                        ),
+                    ],
+                  ),
                 ),
-            ],
+              ),
+            ),
           ),
           VerticalDivider(width: 1, color: scheme.outlineVariant),
           Expanded(
@@ -287,6 +310,32 @@ class _Brand extends StatelessWidget {
   }
 }
 
+/// `v1.0.0` under the sidebar links (UI_DESIGN §2.1, Phase 10); the
+/// icon-only rail keeps it as a tooltip.
+class _VersionFooter extends StatelessWidget {
+  const _VersionFooter({required this.extended});
+
+  final bool extended;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    if (!extended) {
+      return Tooltip(
+        key: const Key('app-version'),
+        message: 'Version ${AppVersion.current}',
+        child: Icon(Icons.info_outline, size: 18, color: scheme.outline),
+      );
+    }
+    return Text(
+      AppVersion.label,
+      key: const Key('app-version'),
+      style: Theme.of(context).textTheme.labelSmall
+          ?.copyWith(color: scheme.outline),
+    );
+  }
+}
+
 /// Shown only to users with more than one role.
 class _RoleSwitcher extends StatelessWidget {
   const _RoleSwitcher({required this.role});
@@ -389,6 +438,16 @@ class _UserMenuButton extends StatelessWidget {
           value: _UserMenuAction.signOut,
           child: Text('Sign out'),
         ),
+        if (Breakpoints.isCompact(context)) ...[
+          const PopupMenuDivider(),
+          PopupMenuItem(
+            enabled: false,
+            child: Text(
+              'Version ${AppVersion.current}',
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+          ),
+        ],
       ],
       child: CircleAvatar(radius: 16, child: Text(initials)),
     );

@@ -1,3 +1,4 @@
+import '../../../../core/theme/theme_color.dart';
 import '../../domain/entities/clinic_settings.dart';
 
 /// Firestore mapping for [ClinicSettings] (`settings/general`).
@@ -29,6 +30,7 @@ abstract final class ClinicSettingsModel {
             )
           : const WhatsappTemplates(),
       timezone: (map['timezone'] as String?) ?? 'Asia/Karachi',
+      themeColor: ThemeColor.parse(map['themeColor']),
     );
   }
 
@@ -52,5 +54,6 @@ abstract final class ClinicSettingsModel {
       'adhoc': s.whatsappTemplates.adhoc,
     },
     'timezone': s.timezone,
+    'themeColor': s.themeColor.key,
   };
 }

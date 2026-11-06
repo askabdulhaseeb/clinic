@@ -60,6 +60,7 @@ abstract final class SaleModel {
     'category': l.category.key,
     'qty': l.qty,
     'unitPrice': l.unitPrice,
+    'unitCost': l.unitCost,
     'lineTotal': l.lineTotal,
     'lensKey': l.lensKey,
   };
@@ -70,6 +71,7 @@ abstract final class SaleModel {
     category: ItemCategory.parse(m['category']),
     qty: _i(m['qty']),
     unitPrice: _i(m['unitPrice']),
+    unitCost: _i(m['unitCost']),
     lensKey: m['lensKey'] as String?,
   );
 

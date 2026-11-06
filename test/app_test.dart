@@ -6,6 +6,7 @@ import 'package:ramzan/app.dart';
 import 'package:ramzan/core/routing/app_router.dart';
 import 'package:ramzan/core/routing/app_routes.dart';
 import 'package:ramzan/core/storage/key_value_store.dart';
+import 'package:ramzan/core/theme/theme_color.dart';
 import 'package:ramzan/features/analytics/domain/repositories/summaries_repository.dart';
 import 'package:ramzan/features/auth/presentation/viewmodels/session_controller.dart';
 import 'package:ramzan/features/catalog/domain/repositories/catalog_repository.dart';
@@ -75,6 +76,53 @@ void main() {
     });
     await tester.pumpAndSettle();
     expect(find.text('Sign in'), findsOneWidget);
+  });
+
+  testWidgets('the theme follows the clinic colour in Settings (Phase 10)', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final session = await tester.runAsync(
+      () => signedInSession(repo, adminUser),
+    );
+    final settings = SettingsController(
+      repository: settingsRepo,
+      session: session!,
+    );
+    addTearDown(settings.dispose);
+    await tester.pumpWidget(app(session, settings: settings));
+    await tester.pumpAndSettle();
+    ThemeData theme() =>
+        tester.widget<MaterialApp>(find.byType(MaterialApp)).theme!;
+    ThemeData dark() =>
+        tester.widget<MaterialApp>(find.byType(MaterialApp)).darkTheme!;
+    final teal = ColorScheme.fromSeed(seedColor: ThemeColor.teal.seed);
+    expect(theme().colorScheme.primary, teal.primary, reason: 'until loaded');
+
+    await tester.runAsync(() async {
+      settingsRepo.emit(sampleSettings.copyWith(themeColor: ThemeColor.red));
+      await pumpEventQueue();
+    });
+    await tester.pumpAndSettle();
+    final red = ColorScheme.fromSeed(seedColor: ThemeColor.red.seed);
+    expect(theme().colorScheme.primary, red.primary);
+    expect(
+      dark().colorScheme.primary,
+      ColorScheme.fromSeed(
+        seedColor: ThemeColor.red.seed,
+        brightness: Brightness.dark,
+      ).primary,
+    );
+
+    await tester.runAsync(() async {
+      repo.emitUid(null);
+      await pumpEventQueue();
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(theme().colorScheme.primary, teal.primary, reason: 'signed out');
   });
 
   testWidgets('signed-in admin lands on the dashboard inside the shell', (

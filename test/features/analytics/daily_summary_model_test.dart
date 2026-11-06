@@ -27,6 +27,8 @@ void main() {
       },
       'salesTotal': 300,
       'salesByCategory': {'frame': 300},
+      'salesCost': 120,
+      'salesCostByCategory': {'frame': 120},
       'expensesTotal': 50,
       'expensesByCategory': {'other': 50},
       'netProfit': 1650,
@@ -48,9 +50,20 @@ void main() {
       const CountAmount(count: 1, amount: 100),
     );
     expect(s.salesByCategory['frame'], 300);
+    expect(s.salesCost, 120);
+    expect(s.salesCostByCategory, {'frame': 120});
     expect(s.salesDiscounts, 0);
     expect(s.netProfit, 1650);
     expect(s.revenue, 1700);
+  });
+
+  test('a summary written before Phase 10 has zero sales cost', () {
+    final s = DailySummaryModel.fromMap('2026-11-06', {
+      'salesTotal': 300,
+      'salesByCategory': {'frame': 300},
+    });
+    expect(s.salesCost, 0);
+    expect(s.salesCostByCategory, isEmpty);
   });
 
   test('fromMap of an empty map is the empty day', () {

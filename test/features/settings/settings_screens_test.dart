@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:ramzan/core/theme/theme_color.dart';
 import 'package:ramzan/features/settings/presentation/screens/initial_setup_screen.dart';
 import 'package:ramzan/features/settings/presentation/screens/settings_screen.dart';
 import 'package:ramzan/features/settings/presentation/viewmodels/initial_setup_vm.dart';
@@ -84,6 +85,23 @@ void main() {
           'Renamed',
         );
         await tester.enterText(find.byKey(const Key('settings-copies')), '3');
+        for (final c in ThemeColor.values) {
+          expect(find.byKey(Key('settings-colour-${c.key}')), findsOneWidget);
+        }
+        expect(
+          find.byKey(const Key('settings-colour-teal-selected')),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const Key('settings-colour-purple')));
+        await tester.pump();
+        expect(
+          find.byKey(const Key('settings-colour-purple-selected')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('settings-colour-teal-selected')),
+          findsNothing,
+        );
         await tester.ensureVisible(find.byKey(const Key('reminder-post-op')));
         await tester.tap(find.byKey(const Key('reminder-post-op')));
         await tester.pump();
@@ -98,6 +116,7 @@ void main() {
         expect(saved.clinicName, 'Renamed');
         expect(saved.defaultReceiptCopies, 3);
         expect(saved.reminders.postOp, isFalse);
+        expect(saved.themeColor, ThemeColor.purple);
         expect(find.text('Settings saved'), findsOneWidget);
       },
     );

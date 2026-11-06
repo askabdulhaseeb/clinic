@@ -197,6 +197,36 @@ describe("applyDailySummaryDeltaCore", () => {
     expect(await summary()).toMatchObject({ salesTotal: 0, salesByCategory: { consumable: 0, lens: 0 }, netProfit: 0 });
   });
 
+  it("a sale's line costs feed salesCost and salesCostByCategory (Phase 10)", async () => {
+    const sale = {
+      patientName: "Walk-in",
+      date: DAY,
+      items: [
+        { itemId: "i1", name: "Eye Drops", category: "consumable", qty: 2, unitPrice: 150, unitCost: 60 },
+        { itemId: "l1", name: "Lens", category: "lens", qty: 1, unitPrice: 900, unitCost: 400 },
+        // Written before Phase 10: no unitCost, counts as 0.
+        { itemId: "f1", name: "Frame", category: "frame", qty: 1, unitPrice: 1200 },
+      ],
+      subtotal: 2400,
+      discountAmount: 0,
+      discountReason: "",
+      total: 2400,
+      paymentMethod: "cash",
+      deleted: false,
+      createdBy: "rec-1",
+      branchId: "main",
+    };
+    await applyDailySummaryDeltaCore(db, { collection: "sales", eventId: "sc-1", before: undefined, after: sale });
+    expect(await summary()).toMatchObject({
+      salesTotal: 2400,
+      salesByCategory: { consumable: 300, lens: 900, frame: 1200 },
+      salesCost: 520,
+      salesCostByCategory: { consumable: 120, lens: 400 },
+      netProfit: 2400,
+    });
+    expect((await summary())?.salesCostByCategory?.frame).toBeUndefined();
+  });
+
   it("an expense reduces profit and buckets by category", async () => {
     const expense = { category: "rent", amount: 5000, date: DAY, note: "", source: "manual", deleted: false, createdBy: "adm-1", branchId: "main" };
     await applyDailySummaryDeltaCore(db, { collection: "expenses", eventId: "e-1", before: undefined, after: expense });
@@ -235,6 +265,24 @@ describe("recomputeDayCore", () => {
     });
     expect(s?.byDoctor.ghost).toBeUndefined();
     expect(s?.updatedAt).toBeDefined();
+  });
+
+  it("recompute carries the sales cost fields", async () => {
+    await db.collection("sales").add({
+      patientName: "Walk-in",
+      date: DAY,
+      items: [{ itemId: "i1", name: "Eye Drops", category: "consumable", qty: 3, unitPrice: 150, unitCost: 60 }],
+      subtotal: 450,
+      discountAmount: 0,
+      total: 450,
+      paymentMethod: "cash",
+      deleted: false,
+      createdBy: "rec-1",
+      branchId: "main",
+    });
+    const out = await recomputeDayCore(db, "admin-1", ADMIN_CLAIMS, { date: DAY });
+    expect(out).toMatchObject({ salesTotal: 450, salesCost: 180, salesCostByCategory: { consumable: 180 } });
+    expect(await summary()).toMatchObject({ salesCost: 180, salesCostByCategory: { consumable: 180 } });
   });
 
   it("an empty day becomes an all-zero summary", async () => {

@@ -58,18 +58,30 @@ function visitContribution(d: Record<string, unknown>): Delta {
 
 function saleContribution(d: Record<string, unknown>): Delta {
   const byCategory: Delta = {};
+  const costByCategory: Delta = {};
+  let cost = 0;
   const items = Array.isArray(d.items) ? d.items : [];
   for (const raw of items) {
     if (typeof raw !== "object" || raw === null) continue;
     const line = raw as Record<string, unknown>;
     const key = str(line.category, "other");
-    byCategory[key] = num(byCategory[key]) + num(line.qty) * num(line.unitPrice);
+    const qty = num(line.qty);
+    byCategory[key] = num(byCategory[key]) + qty * num(line.unitPrice);
+    // Phase 10: unitCost is the purchase price snapshot; lines written
+    // before it have none and count as 0 cost.
+    const lineCost = qty * num(line.unitCost);
+    if (lineCost !== 0) {
+      costByCategory[key] = num(costByCategory[key]) + lineCost;
+      cost += lineCost;
+    }
   }
   const total = num(d.total);
   return {
     salesTotal: total,
     salesDiscounts: num(d.discountAmount),
     salesByCategory: byCategory,
+    salesCost: cost,
+    salesCostByCategory: costByCategory,
     netProfit: total,
   };
 }
@@ -233,6 +245,8 @@ const EMPTY_SUMMARY: Delta = {
   salesTotal: 0,
   salesDiscounts: 0,
   salesByCategory: {},
+  salesCost: 0,
+  salesCostByCategory: {},
   expensesTotal: 0,
   expensesByCategory: {},
   netProfit: 0,

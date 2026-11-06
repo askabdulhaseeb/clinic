@@ -8,7 +8,10 @@ import '../../../../core/utils/karachi_date.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../catalog/domain/repositories/catalog_repository.dart';
 import '../../../catalog/presentation/widgets/action_error_listener.dart';
+import '../../../settings/domain/entities/clinic_settings.dart';
+import '../../../settings/presentation/viewmodels/settings_controller.dart';
 import '../../../users/domain/repositories/user_admin_repository.dart';
+import '../../../visits/presentation/receipt/receipt_printer.dart';
 import '../../domain/dashboard_range.dart';
 import '../../domain/report_tables.dart';
 import '../../domain/repositories/summaries_repository.dart';
@@ -26,6 +29,7 @@ class ReportsScreen extends StatelessWidget {
         catalogRepository: context.read<CatalogRepository>(),
         users: context.read<UserAdminRepository>(),
         saver: context.read<FileSaver?>() ?? const PackageFileSaver(),
+        printer: const PrintingReceiptPrinter(),
       ),
       child: const ReportsView(),
     );
@@ -59,6 +63,9 @@ class ReportsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<ReportsViewModel>();
+    final settings =
+        context.watch<SettingsController?>()?.settings ??
+        ClinicSettings.defaults(clinicName: SettingsController.fallbackName);
     showActionError(
       context,
       error: vm.actionError ?? vm.info,
@@ -145,6 +152,9 @@ class ReportsView extends StatelessWidget {
                       table: t,
                       exporting: vm.exporting,
                       onExport: () => unawaited(vm.export(t.section)),
+                      onExportPdf: () => unawaited(
+                        vm.exportPdf(t.section, settings: settings),
+                      ),
                     ),
                   ),
               ],
@@ -170,11 +180,13 @@ class _ReportCard extends StatelessWidget {
     required this.table,
     required this.exporting,
     required this.onExport,
+    required this.onExportPdf,
   });
 
   final ReportTable table;
   final bool exporting;
   final VoidCallback onExport;
+  final VoidCallback onExportPdf;
 
   @override
   Widget build(BuildContext context) {
@@ -197,6 +209,12 @@ class _ReportCard extends StatelessWidget {
                   onPressed: exporting ? null : onExport,
                   icon: const Icon(Icons.download_outlined, size: 18),
                   label: const Text('Export CSV'),
+                ),
+                TextButton.icon(
+                  key: Key('report-export-pdf-${table.section.key}'),
+                  onPressed: exporting ? null : onExportPdf,
+                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                  label: const Text('Export PDF'),
                 ),
               ],
             ),

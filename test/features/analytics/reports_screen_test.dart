@@ -20,6 +20,7 @@ void main() {
   late MockSummariesRepository summaries;
   late MockUserAdminRepository users;
   late InMemoryFileSaver saver;
+  late FakeReceiptPrinter printer;
   final now = DateTime.utc(2026, 11, 6, 6);
 
   setUp(() {
@@ -27,6 +28,7 @@ void main() {
     summaries = MockSummariesRepository();
     users = MockUserAdminRepository();
     saver = InMemoryFileSaver();
+    printer = FakeReceiptPrinter();
     when(() => users.watchUsers()).thenAnswer((_) => Stream.value(const []));
   });
   tearDown(() => auth.dispose());
@@ -49,6 +51,7 @@ void main() {
               catalogRepository: stubbedCatalog(),
               users: users,
               saver: saver,
+              printer: printer,
               clock: () => now,
             ),
             child: const ReportsView(),
@@ -103,6 +106,23 @@ void main() {
       find.text('Saved revenue-by-doctor_2026-11-01_2026-11-06.csv'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('Export PDF opens the print dialog with the section', (
+    tester,
+  ) async {
+    when(() => summaries.getRange(any()))
+        .thenAnswer((_) async => [sampleSummary(date: '2026-11-06')]);
+    await pump(tester);
+    await tester.ensureVisible(
+      find.byKey(const Key('report-export-pdf-by-doctor')),
+    );
+    await tester.tap(find.byKey(const Key('report-export-pdf-by-doctor')));
+    await tester.pump();
+    await tester.pump();
+    expect(printer.printed.single.name, 'revenue-by-doctor_2026-11-06.pdf');
+    expect(saver.saved, isEmpty);
+    expect(find.textContaining('Saved'), findsNothing);
   });
 
   testWidgets('a failed read shows the error with retry', (tester) async {

@@ -1,5 +1,8 @@
+import '../../../../core/theme/theme_color.dart';
+
 /// `settings/general` (FIREBASE_ARCHITECTURE §4.2): clinic identity, receipt
-/// defaults and WhatsApp reminder configuration. One document per clinic.
+/// defaults, WhatsApp reminder configuration and (Phase 10) the theme
+/// colour. One document per clinic.
 class ClinicSettings {
   const ClinicSettings({
     required this.clinicName,
@@ -12,6 +15,7 @@ class ClinicSettings {
     this.reminders = const ReminderToggles(),
     this.whatsappTemplates = const WhatsappTemplates(),
     this.timezone = 'Asia/Karachi',
+    this.themeColor = ThemeColor.teal,
   });
 
   /// Sensible first-run values; templates use the placeholders in
@@ -47,6 +51,9 @@ class ClinicSettings {
   final WhatsappTemplates whatsappTemplates;
   final String timezone;
 
+  /// Seed colour of both themes (Phase 10).
+  final ThemeColor themeColor;
+
   ClinicSettings copyWith({
     String? clinicName,
     String? logoUrl,
@@ -59,6 +66,7 @@ class ClinicSettings {
     ReminderToggles? reminders,
     WhatsappTemplates? whatsappTemplates,
     String? timezone,
+    ThemeColor? themeColor,
   }) {
     return ClinicSettings(
       clinicName: clinicName ?? this.clinicName,
@@ -71,6 +79,7 @@ class ClinicSettings {
       reminders: reminders ?? this.reminders,
       whatsappTemplates: whatsappTemplates ?? this.whatsappTemplates,
       timezone: timezone ?? this.timezone,
+      themeColor: themeColor ?? this.themeColor,
     );
   }
 
@@ -86,7 +95,8 @@ class ClinicSettings {
       other.followUpReminderDays == followUpReminderDays &&
       other.reminders == reminders &&
       other.whatsappTemplates == whatsappTemplates &&
-      other.timezone == timezone;
+      other.timezone == timezone &&
+      other.themeColor == themeColor;
 
   @override
   int get hashCode => Object.hash(
@@ -100,6 +110,7 @@ class ClinicSettings {
     reminders,
     whatsappTemplates,
     timezone,
+    themeColor,
   );
 }
 

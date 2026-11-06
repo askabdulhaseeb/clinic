@@ -3,7 +3,9 @@ import '../../../visits/domain/entities/visit.dart';
 
 /// One line of a sale (FIREBASE_ARCHITECTURE §4.19 `items`). A lens line
 /// carries the [lensKey] of the exact power sold; the quantity is the
-/// number of lenses (decided 6 Nov 2026: no eye tag).
+/// number of lenses (decided 6 Nov 2026: no eye tag). [unitCost] is the
+/// item's purchase price when the line was added (Phase 10), so margins
+/// survive later price changes; lines saved before Phase 10 read as 0.
 class SaleLine {
   const SaleLine({
     required this.itemId,
@@ -11,6 +13,7 @@ class SaleLine {
     required this.category,
     required this.qty,
     required this.unitPrice,
+    this.unitCost = 0,
     this.lensKey,
   });
 
@@ -21,9 +24,13 @@ class SaleLine {
 
   /// Rupees.
   final int unitPrice;
+
+  /// Rupees; the purchase price at the time of sale.
+  final int unitCost;
   final String? lensKey;
 
   int get lineTotal => qty * unitPrice;
+  int get lineCost => qty * unitCost;
 
   SaleLine copyWith({int? qty, int? unitPrice}) => SaleLine(
     itemId: itemId,
@@ -31,6 +38,7 @@ class SaleLine {
     category: category,
     qty: qty ?? this.qty,
     unitPrice: unitPrice ?? this.unitPrice,
+    unitCost: unitCost,
     lensKey: lensKey,
   );
 
@@ -42,11 +50,12 @@ class SaleLine {
       other.category == category &&
       other.qty == qty &&
       other.unitPrice == unitPrice &&
+      other.unitCost == unitCost &&
       other.lensKey == lensKey;
 
   @override
   int get hashCode =>
-      Object.hash(itemId, name, category, qty, unitPrice, lensKey);
+      Object.hash(itemId, name, category, qty, unitPrice, unitCost, lensKey);
 }
 
 /// `sales/{saleId}` (FIREBASE_ARCHITECTURE §4.19). [patientId] is null for

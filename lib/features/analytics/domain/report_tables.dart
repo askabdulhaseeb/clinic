@@ -35,7 +35,8 @@ enum ReportSection {
     'sales-by-category',
     'Sales by category',
     'sales-by-category',
-  );
+  ),
+  salesMargins('sales-margins', 'Sales margins', 'sales-margins');
 
   const ReportSection(this.key, this.title, this.fileStem);
 
@@ -167,8 +168,55 @@ abstract final class ReportTables {
           total.salesByCategory,
           (k) => ItemCategory.parse(k).label,
         );
+      case ReportSection.salesMargins:
+        return _margins(section, total);
     }
   }
+
+  /// Sold, cost, margin and whole-percent margin per item category (Phase
+  /// 10), highest margin first. A category sold before Phase 10 has no
+  /// stored cost and shows a full margin.
+  static ReportTable _margins(ReportSection section, DailySummary total) {
+    final keys = {
+      ...total.salesByCategory.keys,
+      ...total.salesCostByCategory.keys,
+    };
+    final rows = [
+      for (final k in keys)
+        (
+          key: k,
+          sold: total.salesByCategory[k] ?? 0,
+          cost: total.salesCostByCategory[k] ?? 0,
+        ),
+    ]..sort((a, b) => (b.sold - b.cost).compareTo(a.sold - a.cost));
+    var sold = 0;
+    var cost = 0;
+    for (final r in rows) {
+      sold += r.sold;
+      cost += r.cost;
+    }
+    List<String> row(String label, int sold, int cost) => [
+      label,
+      '$sold',
+      '$cost',
+      '${sold - cost}',
+      '${marginPercent(sold: sold, cost: cost)}',
+    ];
+    return ReportTable(
+      section: section,
+      headers: const ['Category', 'Sold', 'Cost', 'Margin', 'Margin %'],
+      rows: [
+        for (final r in rows)
+          row(ItemCategory.parse(r.key).label, r.sold, r.cost),
+        row('Total', sold, cost),
+      ],
+    );
+  }
+
+  /// `(sold - cost) / sold` as a whole percent, half up; 0 when nothing
+  /// was sold.
+  static int marginPercent({required int sold, required int cost}) =>
+      sold == 0 ? 0 : ((sold - cost) * 100 / sold).round();
 
   static ReportTable _buckets(
     ReportSection section,

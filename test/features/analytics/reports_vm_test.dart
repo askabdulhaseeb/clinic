@@ -17,12 +17,14 @@ void main() {
   late MockSummariesRepository summaries;
   late MockUserAdminRepository users;
   late InMemoryFileSaver saver;
+  late FakeReceiptPrinter printer;
   final now = DateTime.utc(2026, 11, 6, 6);
 
   setUp(() {
     summaries = MockSummariesRepository();
     users = MockUserAdminRepository();
     saver = InMemoryFileSaver();
+    printer = FakeReceiptPrinter();
     when(() => users.watchUsers()).thenAnswer(
       (_) => Stream.value(const [
         AppUser(
@@ -43,6 +45,7 @@ void main() {
       catalogRepository: stubbedCatalog(),
       users: users,
       saver: saver,
+      printer: printer,
       clock: () => now,
     );
     addTearDown(vm.dispose);
@@ -124,6 +127,30 @@ void main() {
     saver.error = const AppException('Blocked', code: 'save-failed');
     expect(await vm.export(ReportSection.daily), isFalse);
     expect(vm.actionError, 'Blocked');
+  });
+
+  test('exportPdf hands the section PDF to the printer', () async {
+    when(() => summaries.getRange(any()))
+        .thenAnswer((_) async => [sampleSummary(date: '2026-11-06')]);
+    final vm = make();
+    await pump();
+    await pump();
+    expect(
+      await vm.exportPdf(ReportSection.byDoctor, settings: sampleSettings),
+      isTrue,
+    );
+    final job = printer.printed.single;
+    expect(job.name, 'revenue-by-doctor_2026-11-06.pdf');
+    expect(String.fromCharCodes(job.bytes.take(4)), '%PDF');
+    expect(vm.info, isNull, reason: 'the print dialog is the feedback');
+    expect(vm.exporting, isFalse);
+
+    printer.error = const AppException('No printer', code: 'print-failed');
+    expect(
+      await vm.exportPdf(ReportSection.daily, settings: sampleSettings),
+      isFalse,
+    );
+    expect(vm.actionError, 'No printer');
   });
 
   test('a failed read shows its message', () async {

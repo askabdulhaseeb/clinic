@@ -21,6 +21,8 @@ abstract final class DailySummaryModel {
         salesTotal: _int(map['salesTotal']),
         salesDiscounts: _int(map['salesDiscounts']),
         salesByCategory: _ints(map['salesByCategory']),
+        salesCost: _int(map['salesCost']),
+        salesCostByCategory: _ints(map['salesCostByCategory']),
         expensesTotal: _int(map['expensesTotal']),
         expensesByCategory: _ints(map['expensesByCategory']),
         netProfit: _int(map['netProfit']),

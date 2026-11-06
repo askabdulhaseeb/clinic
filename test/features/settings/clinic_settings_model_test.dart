@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ramzan/core/theme/theme_color.dart';
 import 'package:ramzan/features/settings/data/models/clinic_settings_model.dart';
 import 'package:ramzan/features/settings/domain/entities/clinic_settings.dart';
 
@@ -14,9 +15,13 @@ void main() {
           defaultReceiptCopies: 2,
           followUpReminderDays: 3,
           reminders: const ReminderToggles(followUp: false),
+          themeColor: ThemeColor.indigo,
         );
-    final back = ClinicSettingsModel.fromMap(ClinicSettingsModel.toMap(s));
+    final map = ClinicSettingsModel.toMap(s);
+    expect(map['themeColor'], 'indigo');
+    final back = ClinicSettingsModel.fromMap(map);
     expect(back, s);
+    expect(back.themeColor, ThemeColor.indigo);
     expect(back.whatsappTemplates, WhatsappTemplates.defaults);
     expect(back.reminders.followUp, isFalse);
   });
@@ -30,6 +35,12 @@ void main() {
     expect(s.reminders, const ReminderToggles());
     expect(s.whatsappTemplates, const WhatsappTemplates());
     expect(s.timezone, 'Asia/Karachi');
+    expect(s.themeColor, ThemeColor.teal);
+    expect(
+      ClinicSettingsModel.fromMap({'clinicName': 'X', 'themeColor': 'pink'})
+          .themeColor,
+      ThemeColor.teal,
+    );
   });
 
   test('defaults carry placeholder templates and copyWith clears the logo', () {

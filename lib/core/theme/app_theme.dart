@@ -2,18 +2,21 @@ import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
 
-/// Light and dark Material 3 themes.
+/// Light and dark Material 3 themes from one [seed] (Admin's choice in
+/// Settings since Phase 10; [AppColors.seed] before sign-in).
 ///
 /// Density is [VisualDensity.adaptivePlatformDensity]: compact on desktop
 /// (the reception PC, including desktop browsers), standard on phones.
 abstract final class AppTheme {
-  static ThemeData light() => _build(Brightness.light);
+  static ThemeData light({Color seed = AppColors.seed}) =>
+      _build(Brightness.light, seed);
 
-  static ThemeData dark() => _build(Brightness.dark);
+  static ThemeData dark({Color seed = AppColors.seed}) =>
+      _build(Brightness.dark, seed);
 
-  static ThemeData _build(Brightness brightness) {
+  static ThemeData _build(Brightness brightness, Color seed) {
     final scheme = ColorScheme.fromSeed(
-      seedColor: AppColors.seed,
+      seedColor: seed,
       brightness: brightness,
     );
     final base = ThemeData(

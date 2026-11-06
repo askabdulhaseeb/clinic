@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:provider/provider.dart';
+import 'package:ramzan/core/app_version.dart';
 import 'package:ramzan/core/routing/app_routes.dart';
 import 'package:ramzan/core/routing/shells/app_shell.dart';
 import 'package:ramzan/core/theme/app_theme.dart';
@@ -102,6 +103,54 @@ void main() {
     await tester.tap(find.text('Users'));
     await tester.pumpAndSettle();
     expect(find.text('users body'), findsOneWidget);
+  });
+
+  group('version footer (Phase 10)', () {
+    testWidgets('extended sidebar shows the version at the bottom', (
+      tester,
+    ) async {
+      await pumpShell(
+        tester,
+        user: adminUser,
+        role: UserRole.admin,
+        location: AppRoutes.adminDashboard,
+        size: const Size(1280, 800),
+      );
+      expect(find.byKey(const Key('app-version')), findsOneWidget);
+      expect(find.text(AppVersion.label), findsOneWidget);
+      final footer = tester.getBottomLeft(find.byKey(const Key('app-version')));
+      final rail = tester.getBottomLeft(find.byType(NavigationRail));
+      expect(rail.dy - footer.dy, lessThan(40), reason: 'sits at the bottom');
+    });
+
+    testWidgets('rail keeps the version as a tooltip', (tester) async {
+      await pumpShell(
+        tester,
+        user: adminUser,
+        role: UserRole.admin,
+        location: AppRoutes.adminDashboard,
+        size: const Size(800, 800),
+      );
+      expect(find.text(AppVersion.label), findsNothing);
+      final tooltip = tester.widget<Tooltip>(
+        find.byKey(const Key('app-version')),
+      );
+      expect(tooltip.message, 'Version ${AppVersion.current}');
+    });
+
+    testWidgets('phone shows the version in the user menu', (tester) async {
+      await pumpShell(
+        tester,
+        user: adminUser,
+        role: UserRole.admin,
+        location: AppRoutes.adminDashboard,
+        size: const Size(400, 800),
+      );
+      expect(find.byKey(const Key('app-version')), findsNothing);
+      await tester.tap(find.byKey(const Key('user-menu')));
+      await tester.pumpAndSettle();
+      expect(find.text('Version ${AppVersion.current}'), findsOneWidget);
+    });
   });
 
   testWidgets('phone shows bottom bar with More for secondary items', (

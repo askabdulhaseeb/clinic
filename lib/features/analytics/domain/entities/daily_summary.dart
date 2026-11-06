@@ -85,6 +85,8 @@ class DailySummary {
     required this.salesTotal,
     required this.salesDiscounts,
     required this.salesByCategory,
+    this.salesCost = 0,
+    this.salesCostByCategory = const {},
     required this.expensesTotal,
     required this.expensesByCategory,
     required this.netProfit,
@@ -143,6 +145,11 @@ class DailySummary {
 
   /// Item category key → amount sold (before the sale discount).
   final Map<String, int> salesByCategory;
+
+  /// Purchase cost of the items sold (Phase 10; 0 for sales saved before
+  /// it, which carried no `unitCost`).
+  final int salesCost;
+  final Map<String, int> salesCostByCategory;
   final int expensesTotal;
   final Map<String, int> expensesByCategory;
   final int netProfit;
@@ -170,6 +177,8 @@ class DailySummary {
     salesTotal: salesTotal + o.salesTotal,
     salesDiscounts: salesDiscounts + o.salesDiscounts,
     salesByCategory: _addInts(salesByCategory, o.salesByCategory),
+    salesCost: salesCost + o.salesCost,
+    salesCostByCategory: _addInts(salesCostByCategory, o.salesCostByCategory),
     expensesTotal: expensesTotal + o.expensesTotal,
     expensesByCategory: _addInts(expensesByCategory, o.expensesByCategory),
     netProfit: netProfit + o.netProfit,
@@ -232,6 +241,8 @@ class DailySummary {
       other.salesTotal == salesTotal &&
       other.salesDiscounts == salesDiscounts &&
       _mapEq(other.salesByCategory, salesByCategory) &&
+      other.salesCost == salesCost &&
+      _mapEq(other.salesCostByCategory, salesCostByCategory) &&
       other.expensesTotal == expensesTotal &&
       _mapEq(other.expensesByCategory, expensesByCategory) &&
       other.netProfit == netProfit;

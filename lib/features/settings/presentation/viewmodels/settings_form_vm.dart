@@ -1,11 +1,12 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../../core/errors/app_exception.dart';
+import '../../../../core/theme/theme_color.dart';
 import '../../domain/entities/clinic_settings.dart';
 import '../../domain/repositories/settings_repository.dart';
 
 /// Edits the whole settings document. The screen owns text controllers; the
-/// view model owns toggles, the logo and the save call.
+/// view model owns toggles, the theme colour, the logo and the save call.
 class SettingsFormViewModel extends ChangeNotifier {
   SettingsFormViewModel({
     required SettingsRepository repository,
@@ -13,6 +14,7 @@ class SettingsFormViewModel extends ChangeNotifier {
   }) : _repo = repository,
        _initial = initial,
        _reminders = initial.reminders,
+       _themeColor = initial.themeColor,
        _logoUrl = initial.logoUrl;
 
   static const int maxLogoBytes = 2 * 1024 * 1024;
@@ -20,6 +22,7 @@ class SettingsFormViewModel extends ChangeNotifier {
   final SettingsRepository _repo;
   final ClinicSettings _initial;
   ReminderToggles _reminders;
+  ThemeColor _themeColor;
   String? _logoUrl;
   bool _saving = false;
   bool _uploadingLogo = false;
@@ -28,6 +31,7 @@ class SettingsFormViewModel extends ChangeNotifier {
 
   ClinicSettings get initial => _initial;
   ReminderToggles get reminders => _reminders;
+  ThemeColor get themeColor => _themeColor;
   String? get logoUrl => _logoUrl;
   bool get saving => _saving;
   bool get uploadingLogo => _uploadingLogo;
@@ -40,6 +44,11 @@ class SettingsFormViewModel extends ChangeNotifier {
       followUp: followUp,
       postOp: postOp,
     );
+    notifyListeners();
+  }
+
+  void setThemeColor(ThemeColor colour) {
+    _themeColor = colour;
     notifyListeners();
   }
 
@@ -128,6 +137,7 @@ class SettingsFormViewModel extends ChangeNotifier {
           followUpReminderDays: followUpReminderDays,
           reminders: _reminders,
           whatsappTemplates: templates,
+          themeColor: _themeColor,
         ),
       );
       return true;

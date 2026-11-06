@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/theme_color.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../domain/entities/clinic_settings.dart';
 import '../../domain/repositories/settings_repository.dart';
@@ -198,6 +199,11 @@ class _SettingsViewState extends State<SettingsView> {
                           logoUrl: vm.logoUrl,
                           uploading: vm.uploadingLogo,
                           onPick: vm.busy ? null : _pickLogo,
+                        ),
+                        const SizedBox(height: 16),
+                        _ThemeColourRow(
+                          selected: vm.themeColor,
+                          onSelect: vm.busy ? null : vm.setThemeColor,
                         ),
                       ],
                     ),
@@ -405,6 +411,64 @@ class _TwoColumn extends StatelessWidget {
         Expanded(child: left),
         const SizedBox(width: 12),
         Expanded(child: right),
+      ],
+    );
+  }
+}
+
+/// Eight swatches (UI_DESIGN §4.9b, Phase 10); the chosen one is ringed and
+/// carries a check. Keys `settings-colour-<key>` and
+/// `settings-colour-<key>-selected` on the chosen one.
+class _ThemeColourRow extends StatelessWidget {
+  const _ThemeColourRow({required this.selected, required this.onSelect});
+
+  final ThemeColor selected;
+  final ValueChanged<ThemeColor>? onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Theme colour', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final c in ThemeColor.values)
+              Tooltip(
+                message: c.label,
+                child: InkWell(
+                  key: Key('settings-colour-${c.key}'),
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: onSelect == null ? null : () => onSelect!(c),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: c.seed,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: c == selected
+                            ? scheme.onSurface
+                            : Colors.transparent,
+                        width: 3,
+                      ),
+                    ),
+                    child: c == selected
+                        ? Icon(
+                            Icons.check,
+                            key: Key('settings-colour-${c.key}-selected'),
+                            color: Colors.white,
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ],
     );
   }

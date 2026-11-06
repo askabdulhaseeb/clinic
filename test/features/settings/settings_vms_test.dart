@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ramzan/core/errors/app_exception.dart';
+import 'package:ramzan/core/theme/theme_color.dart';
 import 'package:ramzan/features/settings/domain/entities/clinic_settings.dart';
 import 'package:ramzan/features/settings/presentation/viewmodels/initial_setup_vm.dart';
 import 'package:ramzan/features/settings/presentation/viewmodels/settings_form_vm.dart';
@@ -31,6 +32,9 @@ void main() {
         repository: repo,
         initial: sampleSettings,
       )..setReminder(postOp: false);
+      expect(vm.themeColor, ThemeColor.teal);
+      vm.setThemeColor(ThemeColor.orange);
+      expect(vm.themeColor, ThemeColor.orange);
       final ok = await vm.save(
         clinicName: ' New Name ',
         address: 'A',
@@ -48,6 +52,7 @@ void main() {
       expect(saved.reminders.appointment, isTrue);
       expect(saved.whatsappTemplates.adhoc, 'hi {patient}');
       expect(saved.timezone, sampleSettings.timezone);
+      expect(saved.themeColor, ThemeColor.orange);
     });
 
     test('save failure keeps the message', () async {
