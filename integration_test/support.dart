@@ -144,3 +144,37 @@ Future<void> signOut(WidgetTester tester) async {
   await tester.tap(find.text('Sign out'));
   await waitFor(tester, find.text('Sign in'));
 }
+
+/// Runs [body] while collecting every `FlutterError` (layout overflows,
+/// build errors) and reports them in one `TestFailure`, because the web
+/// driver only forwards the count ("Multiple exceptions (3)"), not the
+/// details, which go to the browser console.
+Future<void> reportingFlutterErrors(Future<void> Function() body) async {
+  final errors = <String>[];
+  final original = FlutterError.onError;
+  FlutterError.onError = (details) {
+    final lines = '${details.exceptionAsString()}\n${details.stack}'
+        .split('\n')
+        .where((l) => l.trim().isNotEmpty)
+        .take(14)
+        .join('\n');
+    errors.add(lines);
+  };
+  Object? failure;
+  StackTrace? trace;
+  try {
+    await body();
+  } catch (e, st) {
+    failure = e;
+    trace = st;
+  } finally {
+    FlutterError.onError = original;
+  }
+  if (errors.isNotEmpty) {
+    throw TestFailure(
+      '${errors.length} Flutter error(s):\n${errors.join('\n---\n')}'
+      '${failure == null ? '' : '\nTest failure: $failure'}',
+    );
+  }
+  if (failure != null) Error.throwWithStackTrace(failure, trace!);
+}

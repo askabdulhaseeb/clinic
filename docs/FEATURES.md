@@ -45,7 +45,7 @@ Reception runs on the **web** at the front desk and must keep working **offline*
 | Reports | Reception uploads reports the patient brings in. |
 | History visibility | Every doctor sees the patient's full history across all departments. |
 | Operations | Schedule a date, pre-op checklist (Admin and doctors maintain the default list), post-op follow-up reminders (default days per operation type, changeable per patient). |
-| Inventory | Homeo medicines, frames, lenses stocked by power (SPH/CYL), consumables. No batch or expiry tracking. Suppliers and purchase bills tracked; a purchase creates an expense. |
+| Inventory | Homeo medicines, frames, lenses stocked by power (SPH/CYL), consumables. No batch or expiry tracking. Suppliers and purchase bills tracked; a purchase creates an expense. Decided 6 Nov 2026: lens grid SPH −20.00 to +20.00, CYL 0.00 to −8.00, step 0.25; a sale with short stock warns but is allowed; purchase bills cannot be edited after saving. |
 | Doctor pay | Salary plus percentage of fees. Admin chooses per doctor whether the percentage applies to gross fee or net fee after discount. Payouts are for any date range Admin picks. |
 | Analytics | Revenue, patient counts, discounts, expenses and net profit. Read from daily summaries, updated within seconds of each transaction. Timezone Asia/Karachi. |
 | Patient reminders | WhatsApp via WhatsApp Web already open on the reception PC. App opens a pre-filled message, staff press send. No Business API. Admin can turn each reminder type on or off. |
@@ -192,6 +192,7 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 ### 5.6 Inventory sales
 - Sell items (medicines, frames, lenses, consumables) to a patient, with or without a visit. Frames and lenses are separate line items. For a lens line, reception picks lens type and power; the app suggests the power from the patient's latest eye prescription. Stock decreases for that exact power.
 - Stock decreases on sale. Discount with reason allowed. Same payment methods.
+- If the stock this device knows about is short (fewer units than the line, or zero), the line shows a warning but the sale goes through (decided 6 Nov 2026, so an offline desk never loses a sale); stock may go negative and Admin corrects it with an adjustment.
 - Receipt for sale, or combined on the visit receipt when linked.
 
 ### 5.7 Receipt (A4)
@@ -276,12 +277,12 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - Search any visit. Edit fee, discount, payment method, doctor, or delete. Every change is written to the audit log with the reason.
 
 ### 7.5 Inventory
-- Add items with category, prices, unit, low-stock threshold.
-- Lenses: add stock per type and power (SPH/CYL). A grid view shows stock on hand across the power range for each lens type, with low-stock cells highlighted.
-- Suppliers list. Purchases: pick supplier, enter bill number and line items; stock increases and an expense is created automatically.
-- Manual stock adjustments with reason.
-- Stock movement history per item.
-- Low-stock list.
+- Add items with category, prices, unit, low-stock threshold, brand, and an opening stock on creation (recorded as an "Opening stock" adjustment). Items are deactivated, never deleted.
+- Lenses: one item per type and power (SPH/CYL). A grid view per lens type (SPH −20.00 to +20.00 down the side, CYL 0.00 to −8.00 across, 0.25 steps; decided 6 Nov 2026) shows stock on hand with low-stock cells highlighted; tapping a power that has no item yet opens the item form with the power filled in.
+- Suppliers list (name, phone, address, notes; deactivate). Purchases: pick supplier, enter bill number, date and line items (item, quantity, unit cost); stock increases and an expense is created automatically. A saved purchase cannot be edited (decided 6 Nov 2026).
+- Manual stock adjustments with a signed quantity and a reason.
+- Stock movement history per item (last 50 movements).
+- Low-stock filter on each category list (stock at or below the item's threshold); the dashboard card arrives in Phase 8.
 
 ### 7.6 Expenses and doctor payouts
 - Record expenses by category with date and note.

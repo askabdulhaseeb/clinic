@@ -21,6 +21,13 @@ import 'package:ramzan/features/catalog/domain/entities/department.dart';
 import 'package:ramzan/features/catalog/domain/entities/doctor.dart';
 import 'package:ramzan/features/catalog/domain/entities/visit_type.dart';
 import 'package:ramzan/features/catalog/domain/repositories/catalog_repository.dart';
+import 'package:ramzan/features/inventory/domain/entities/inventory_item.dart';
+import 'package:ramzan/features/inventory/domain/entities/lens_power.dart';
+import 'package:ramzan/features/inventory/domain/entities/purchase.dart';
+import 'package:ramzan/features/inventory/domain/entities/stock_movement.dart';
+import 'package:ramzan/features/inventory/domain/entities/supplier.dart';
+import 'package:ramzan/features/inventory/domain/repositories/inventory_repository.dart';
+import 'package:ramzan/features/inventory/presentation/viewmodels/inventory_controller.dart';
 import 'package:ramzan/features/operations/domain/entities/operation.dart';
 import 'package:ramzan/features/operations/domain/repositories/operations_repository.dart';
 import 'package:ramzan/features/patients/domain/entities/family.dart';
@@ -178,6 +185,146 @@ void registerOperationFallbacks() {
     ),
   );
 }
+
+class MockInventoryRepository extends Mock implements InventoryRepository {}
+
+/// Call once (setUpAll) before using `any()` with inventory inputs.
+void registerInventoryFallbacks() {
+  registerFallbackValue(
+    const ItemInput(
+      category: ItemCategory.medicine,
+      name: 'x',
+      brand: '',
+      unit: '',
+      purchasePrice: 0,
+      salePrice: 0,
+      lowStockThreshold: 0,
+    ),
+  );
+  registerFallbackValue(sampleItem());
+  registerFallbackValue(sampleSupplier());
+  registerFallbackValue(
+    PurchaseInput(
+      supplier: sampleSupplier(),
+      billNo: '1',
+      date: '2026-11-06',
+      note: '',
+      lines: const [],
+    ),
+  );
+}
+
+/// An item builder for list, grid, form and detail tests.
+InventoryItem sampleItem({
+  String id = 'item-arnica',
+  ItemCategory category = ItemCategory.medicine,
+  String name = 'Arnica 30',
+  String brand = 'Schwabe',
+  String unit = 'bottle',
+  int purchasePrice = 100,
+  int salePrice = 150,
+  int stock = 10,
+  int lowStockThreshold = 5,
+  bool active = true,
+  LensPower? lens,
+}) => InventoryItem(
+  id: id,
+  category: category,
+  name: name,
+  brand: brand,
+  unit: unit,
+  purchasePrice: purchasePrice,
+  salePrice: salePrice,
+  stock: stock,
+  lowStockThreshold: lowStockThreshold,
+  lens: lens,
+  active: active,
+);
+
+/// A stocked single-vision −1.25 / −0.50 lens.
+InventoryItem sampleLensItem({
+  LensType type = LensType.singleVision,
+  double sph = -1.25,
+  double cyl = -0.5,
+  int stock = 3,
+  int lowStockThreshold = 2,
+}) {
+  final power = LensPower(type: type, sph: sph, cyl: cyl);
+  return sampleItem(
+    id: power.key,
+    category: ItemCategory.lens,
+    name: power.displayName,
+    brand: 'Essilor',
+    unit: 'pc',
+    purchasePrice: 400,
+    salePrice: 900,
+    stock: stock,
+    lowStockThreshold: lowStockThreshold,
+    lens: power,
+  );
+}
+
+Supplier sampleSupplier({
+  String id = 'sup-schwabe',
+  String name = 'Schwabe Pakistan',
+  bool active = true,
+}) => Supplier(
+  id: id,
+  name: name,
+  phone: '03001234567',
+  address: 'Lahore',
+  notes: '',
+  active: active,
+);
+
+StockMovement sampleMovement({
+  String id = 'mov-1',
+  String itemId = 'item-arnica',
+  int qty = 10,
+  MovementType type = MovementType.adjustment,
+  String? refId,
+  String reason = 'Opening stock',
+  String createdBy = 'admin-1',
+  DateTime? createdAt,
+}) => StockMovement(
+  id: id,
+  itemId: itemId,
+  itemName: 'Arnica 30',
+  qty: qty,
+  type: type,
+  refId: refId,
+  reason: reason,
+  createdBy: createdBy,
+  createdAt: createdAt ?? DateTime.utc(2026, 11, 6, 5),
+);
+
+Purchase samplePurchase({
+  String id = 'pur-1',
+  String billNo = '771',
+  String date = '2026-11-06',
+  List<PurchaseLine>? items,
+}) => Purchase(
+  id: id,
+  supplierId: 'sup-schwabe',
+  supplierName: 'Schwabe Pakistan',
+  billNo: billNo,
+  date: date,
+  items:
+      items ??
+      const [
+        PurchaseLine(
+          itemId: 'item-arnica',
+          name: 'Arnica 30',
+          qty: 10,
+          unitCost: 90,
+        ),
+      ],
+  total: 900,
+  note: '',
+  expenseId: 'exp-1',
+  createdBy: 'admin-1',
+  createdAt: DateTime.utc(2026, 11, 6, 5),
+);
 
 class MockAppointmentsRepository extends Mock
     implements AppointmentsRepository {}
@@ -690,6 +837,8 @@ Widget wrapWithProviders({
   ReportsRepository? reportsRepository,
   OperationsRepository? operationsRepository,
   AppointmentsRepository? appointmentsRepository,
+  InventoryRepository? inventoryRepository,
+  InventoryController? inventoryController,
   DevToolsRepository? devTools,
   Size size = const Size(1280, 800),
 }) {
@@ -718,6 +867,12 @@ Widget wrapWithProviders({
         Provider<OperationsRepository>.value(value: operationsRepository),
       if (appointmentsRepository != null)
         Provider<AppointmentsRepository>.value(value: appointmentsRepository),
+      if (inventoryRepository != null)
+        Provider<InventoryRepository>.value(value: inventoryRepository),
+      if (inventoryController != null)
+        ChangeNotifierProvider<InventoryController>.value(
+          value: inventoryController,
+        ),
       if (devTools != null) Provider<DevToolsRepository>.value(value: devTools),
     ],
     child: MediaQuery(

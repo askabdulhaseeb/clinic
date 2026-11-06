@@ -19,7 +19,7 @@
 | Appointments | Date plus free-text time. No slot grid, no working hours. |
 | Deletes | Soft delete with reason. `deleted: true` hides the record from lists and totals. |
 | Dashboard | Reads only `dailySummaries`. A Cloud Function applies the difference of every visit, sale, expense or patient write to that day's summary with `FieldValue.increment`. No reads, no recompute. An Admin "Recompute day" button repairs a single day if a total ever drifts. |
-| Inventory | No batch or expiry tracking. Suppliers and purchase bills are tracked; a purchase creates an expense. |
+| Inventory | No batch or expiry tracking. Suppliers and purchase bills are tracked; a purchase creates an expense. Decided 6 Nov 2026 (Phase 7A): one `inventoryItems` document per lens type and power, document ID = `lensKey`, created on first use; grid range SPH −20.00 to +20.00, CYL 0.00 to −8.00, step 0.25. Reception and Admin hold one listener on `inventoryItems`; the lens grid, low-stock list and item search are client-side over it. Purchases are immutable. A sale with short stock warns but is allowed (7B); Admin corrects with an adjustment. |
 | Payouts | Admin chooses any date range. Payout = salary amount entered by Admin (prefilled with monthly salary) plus share of fees in the range. |
 | Family rules | Patient may have a personal phone. Patient can be moved between families. Family phone can be changed. |
 | Patient age | Decided 4 Nov 2026. Only `dateOfBirth` is stored. An age typed by reception becomes 1 January of the birth year with `dobApproximate: true`; the UI shows `~40 y`. No `ageYears` field. |
@@ -234,11 +234,13 @@ When `scheduledDate` is set or `postOpDays` changes, the client regenerates the 
 category: "medicine" | "frame" | "lens" | "consumable",
 name, brand, unit, purchasePrice, salePrice,
 stock, lowStockThreshold,
-lens: { type: "singleVision" | "bifocal" | "progressive", sph, cyl },   // lens only
+lens: { type: "singleVision" | "bifocal" | "progressive", sph, cyl },   // lens only; sph, cyl numbers
 lensKey: "singleVision|-1.25|-0.50",                                      // lens only, unique per power
-searchKeys, active, branchId, createdAt, updatedAt
+searchKeys, active, branchId, createdAt, createdBy, updatedAt, updatedBy
 ```
-Stock is changed only with `FieldValue.increment` inside a batch that also writes a `stockMovements` document. This stays correct offline.
+Stock is changed only with `FieldValue.increment` inside a batch that also writes a `stockMovements` document. This stays correct offline. An item created with an opening stock writes that stock and one `adjustment` movement ("Opening stock") in the same batch (Phase 7A).
+
+Lens items (decided 6 Nov 2026): `lensKey` is `<type>|<sph>|<cyl>` with the powers printed to two decimals and a sign (`+1.25`, `-0.50`, `0.00`), and the document ID equals `lensKey`, so a power cannot exist twice and the grid finds a cell without a query. The grid covers SPH −20.00 to +20.00 and CYL 0.00 to −8.00 in 0.25 steps (161 × 33 cells per type); a document exists only once Admin has created the item (tapping an empty cell opens the item form with the power filled in), so unused powers cost nothing. `name` of a lens item is generated (`Single vision +1.25 / -0.50`, plus the brand when set). Reception and Admin sessions keep one listener on the whole collection (§9); the lens grid, low-stock list and search run on the client over it, so no inventory composite index is needed.
 
 ### 4.16 `suppliers/{supplierId}`
 ```
@@ -251,7 +253,7 @@ supplierId, supplierName, billNo, date,
 items: [ { itemId, name, qty, unitCost, lineTotal } ],
 total, note, expenseId, createdBy, createdAt, branchId
 ```
-Client batch: create purchase, one `stockMovements` per line, increment each item's `stock`, create an `expenses` document with `source: "purchase"`.
+Client batch: create purchase, one `stockMovements` per line, increment each item's `stock`, create an `expenses` document with `source: "purchase"` (category `purchase`, amount = `total`, the bill number and supplier in `note`, `refId` = purchase ID). A purchase is immutable (decided 6 Nov 2026): there is no edit screen and no update rule; a wrong bill is corrected with stock adjustments and, in Phase 8, an expense correction.
 
 ### 4.18 `stockMovements/{movementId}`
 ```
@@ -357,11 +359,13 @@ Roles come from `request.auth.token.roles`. Helper functions: `isAdmin()`, `isRe
 | `prescriptions` | any signed-in | Doctor whose claim `doctorId` equals the visit's `doctorId` (one `get` on `visits/{visitId}`); document ID = `visitId` = `data.visitId`; `date` equals the visit's date; `createdBy` = caller; `branchId` in claims | The same doctor (`resource.data.doctorId`), only before the end of the prescription's Karachi day (§1); `visitId`, `patientId`, `doctorId`, `departmentId`, `date`, `branchId`, `createdAt`, `createdBy` locked; `updatedBy` = caller | never |
 | `reports` | any signed-in | Reception, Admin | Reception, Admin | never (soft) |
 | `operations` | any signed-in | Doctor, Admin | Doctor, Reception (only `postOpDays`, `followUpAppointmentIds`), Admin | never |
-| `inventoryItems` | any signed-in | Admin | Admin; Reception only `stock` via increment | never |
-| `suppliers`, `purchases` | Admin | Admin | Admin | never |
-| `stockMovements` | Admin | Reception, Admin | never | never |
+| `inventoryItems` | any signed-in | Admin (`createdBy` = caller, `branchId` in claims; `category` in medicine/frame/lens/consumable; non-empty `name`; `purchasePrice`, `salePrice`, `stock`, `lowStockThreshold` ints ≥ 0 except `stock`; lens items: `lens` map, `lensKey` string equal to the document ID; Phase 7A) | Admin: any business field, `branchId`, `createdAt`, `createdBy` locked (`updatedBy` = caller). Reception: only `stock` (+ `updatedAt`, `updatedBy`), which is how the sale batch decrements | never |
+| `suppliers` | Admin | Admin (`createdBy` = caller; non-empty `name`) | Admin (`updatedBy` = caller) | never |
+| `purchases` | Admin | Admin (`createdBy` = caller, `branchId` in claims; non-empty `supplierId`, `billNo`, `date`; `items` list; `total` int ≥ 0) | never (immutable, decided 6 Nov 2026) | never |
+| `stockMovements` | Admin | Reception, Admin (`createdBy` = caller, `branchId` in claims; non-empty `itemId`; `qty` int ≠ 0; `type` in purchase/sale/operationUse/adjustment) | never | never |
 | `sales` | any signed-in | Reception, Admin | Admin | never (soft) |
-| `expenses`, `payouts` | Admin | Admin | Admin | never |
+| `expenses` | Admin | Admin (`createdBy` = caller, `branchId` in claims; `amount` int ≥ 0; `source` in manual/purchase/payout; `deleted == false`; Phase 7A opens read and create for the purchase batch) | Admin (Phase 8; `updatedBy` = caller) | never (soft) |
+| `payouts` | Admin | Admin | Admin | never |
 | `dailySummaries`, `auditLogs`, `counters`, `summaryEvents` | Admin (`counters`, `summaryEvents`: nobody) | Functions | Functions | never |
 
 Additional rule checks:
@@ -405,9 +409,9 @@ Rules: any signed-in user reads. Reception and Admin write under `reports` (Phas
 | `patients` | `familyId asc, name asc` (same) |
 | `reports` | `patientId asc, deleted asc, uploadedAt desc` (not yet created: Phase 5B queries `patientId` alone and filters and sorts on the client) |
 | `operations` | `surgeonDoctorId asc, status asc, scheduledDate asc` (not yet created: Phase 5B queries `surgeonDoctorId` alone and filters and sorts on the client) |
-| `stockMovements` | `itemId asc, createdAt desc` |
-| `inventoryItems` | `category asc, active asc, name asc` |
-| `inventoryItems` | `category asc, lens.type asc, lens.sph asc, lens.cyl asc` (lens grid) |
+| `stockMovements` | `itemId asc, createdAt desc` (item movement history, last 50; Phase 7A, in `firestore.indexes.json`) |
+| `inventoryItems` | `category asc, active asc, name asc` (not needed: one listener on the collection, filtered on the client; decided 6 Nov 2026) |
+| `inventoryItems` | `category asc, lens.type asc, lens.sph asc, lens.cyl asc` (not needed: the lens grid is built on the client from the same listener) |
 | `sales` | `date asc, deleted asc, createdAt desc` |
 | `expenses` | `date asc, deleted asc` |
 

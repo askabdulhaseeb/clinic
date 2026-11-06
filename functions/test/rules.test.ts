@@ -335,9 +335,10 @@ describe("master data write", () => {
 
 describe("other collections", () => {
   it("denied even for admin", async () => {
-    await assertFails(asAdmin().doc("inventoryItems/i1").get());
-    await assertFails(asAdmin().doc("inventoryItems/i1").set({ name: "x" }));
-    await assertFails(asAlice().collection("inventoryItems").get());
+    // `sales` opens in Phase 7B, `payouts` in Phase 8.
+    await assertFails(asAdmin().doc("sales/s1").get());
+    await assertFails(asAdmin().doc("sales/s1").set({ total: 1 }));
+    await assertFails(asAlice().collection("payouts").get());
     await assertFails(asAnon().doc("settings/general").get());
   });
 });
@@ -1053,5 +1054,244 @@ describe("appointments from operations", () => {
     await assertSucceeds(
       asDoctor().doc("appointments/op-day").set(appointment(DOCTOR, { source: "operation", operationId: "o1", prescriptionId: null }))
     );
+  });
+});
+
+// ----- Phase 7A: inventory ---------------------------------------------------
+
+function inventoryItem(uid: string, extra: Record<string, unknown> = {}) {
+  return {
+    category: "medicine",
+    name: "Arnica 30",
+    brand: "Schwabe",
+    unit: "bottle",
+    purchasePrice: 100,
+    salePrice: 150,
+    stock: 0,
+    lowStockThreshold: 5,
+    lens: null,
+    lensKey: null,
+    searchKeys: ["a", "ar", "arn"],
+    active: true,
+    branchId: "main",
+    createdAt: new Date(),
+    createdBy: uid,
+    updatedAt: new Date(),
+    updatedBy: uid,
+    ...extra,
+  };
+}
+
+const lensFields = {
+  category: "lens",
+  name: "Single vision -1.25 / -0.50",
+  lens: { type: "singleVision", sph: -1.25, cyl: -0.5 },
+  lensKey: "singleVision|-1.25|-0.50",
+};
+
+function stockMovement(uid: string, extra: Record<string, unknown> = {}) {
+  return {
+    itemId: "i1",
+    itemName: "Arnica 30",
+    qty: 5,
+    type: "adjustment",
+    refId: null,
+    reason: "Count",
+    createdBy: uid,
+    createdAt: new Date(),
+    branchId: "main",
+    ...extra,
+  };
+}
+
+function supplier(uid: string, extra: Record<string, unknown> = {}) {
+  return {
+    name: "Schwabe Pakistan",
+    phone: "0300",
+    address: "Lahore",
+    notes: "",
+    active: true,
+    createdAt: new Date(),
+    createdBy: uid,
+    updatedAt: new Date(),
+    updatedBy: uid,
+    ...extra,
+  };
+}
+
+function purchase(uid: string, extra: Record<string, unknown> = {}) {
+  return {
+    supplierId: "s1",
+    supplierName: "Schwabe Pakistan",
+    billNo: "771",
+    date: "2026-11-06",
+    items: [{ itemId: "i1", name: "Arnica 30", qty: 10, unitCost: 90, lineTotal: 900 }],
+    total: 900,
+    note: "",
+    expenseId: "e1",
+    createdBy: uid,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    updatedBy: uid,
+    branchId: "main",
+    ...extra,
+  };
+}
+
+function expense(uid: string, extra: Record<string, unknown> = {}) {
+  return {
+    category: "purchase",
+    amount: 900,
+    date: "2026-11-06",
+    note: "Bill 771, Schwabe Pakistan",
+    source: "purchase",
+    refId: "p1",
+    deleted: false,
+    createdBy: uid,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    updatedBy: uid,
+    branchId: "main",
+    ...extra,
+  };
+}
+
+describe("inventoryItems", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("inventoryItems/i1").set(inventoryItem(ADMIN, { stock: 10 }));
+    });
+  });
+  it("any signed-in user reads and lists; anonymous denied", async () => {
+    await assertSucceeds(asAlice().doc("inventoryItems/i1").get());
+    await assertSucceeds(asDoctor().collection("inventoryItems").get());
+    await assertFails(asAnon().doc("inventoryItems/i1").get());
+  });
+  it("admin creates with a valid shape and createdBy = self", async () => {
+    await assertSucceeds(asAdmin().doc("inventoryItems/i2").set(inventoryItem(ADMIN)));
+    await assertSucceeds(asAdmin().doc("inventoryItems/singleVision|-1.25|-0.50").set(inventoryItem(ADMIN, lensFields)));
+    await assertFails(asAlice().doc("inventoryItems/i3").set(inventoryItem(ALICE)));
+    await assertFails(asDoctor().doc("inventoryItems/i3").set(inventoryItem(DOCTOR)));
+    await assertFails(asAdmin().doc("inventoryItems/i3").set(inventoryItem(ALICE)));
+    await assertFails(asAdmin().doc("inventoryItems/i3").set(inventoryItem(ADMIN, { category: "toy" })));
+    await assertFails(asAdmin().doc("inventoryItems/i3").set(inventoryItem(ADMIN, { name: "" })));
+    await assertFails(asAdmin().doc("inventoryItems/i3").set(inventoryItem(ADMIN, { salePrice: -1 })));
+    await assertFails(asAdmin().doc("inventoryItems/i3").set(inventoryItem(ADMIN, { stock: "ten" })));
+    await assertFails(asAdmin().doc("inventoryItems/i3").set(inventoryItem(ADMIN, { lowStockThreshold: -2 })));
+    await assertFails(asAdmin().doc("inventoryItems/i3").set(inventoryItem(ADMIN, { branchId: "other" })));
+  });
+  it("a lens item's key must equal its document id and carry the lens map", async () => {
+    await assertFails(asAdmin().doc("inventoryItems/wrong-id").set(inventoryItem(ADMIN, lensFields)));
+    await assertFails(asAdmin().doc("inventoryItems/singleVision|-1.25|-0.50").set(inventoryItem(ADMIN, { ...lensFields, lens: null })));
+  });
+  it("admin updates business fields; stamps and branch locked", async () => {
+    await assertSucceeds(asAdmin().doc("inventoryItems/i1").update({ salePrice: 170, active: false, updatedBy: ADMIN }));
+    await assertSucceeds(asAdmin().doc("inventoryItems/i1").update({ stock: 12, updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("inventoryItems/i1").update({ salePrice: 170, updatedBy: ALICE }));
+    await assertFails(asAdmin().doc("inventoryItems/i1").update({ createdBy: ALICE, updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("inventoryItems/i1").update({ branchId: "b2", updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("inventoryItems/i1").update({ name: "", updatedBy: ADMIN }));
+  });
+  it("reception may only move stock (the sale batch)", async () => {
+    await assertSucceeds(asAlice().doc("inventoryItems/i1").update({ stock: 8, updatedAt: new Date(), updatedBy: ALICE }));
+    await assertFails(asAlice().doc("inventoryItems/i1").update({ stock: 8, updatedBy: BOB }));
+    await assertFails(asAlice().doc("inventoryItems/i1").update({ salePrice: 1, updatedBy: ALICE }));
+    await assertFails(asAlice().doc("inventoryItems/i1").update({ stock: 8, active: false, updatedBy: ALICE }));
+    await assertFails(asDoctor().doc("inventoryItems/i1").update({ stock: 8, updatedBy: DOCTOR }));
+  });
+  it("nobody deletes", async () => {
+    await assertFails(asAdmin().doc("inventoryItems/i1").delete());
+  });
+});
+
+describe("stockMovements", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("stockMovements/m1").set(stockMovement(ADMIN));
+    });
+  });
+  it("admin reads; reception and doctor do not", async () => {
+    await assertSucceeds(asAdmin().collection("stockMovements").where("itemId", "==", "i1").get());
+    await assertFails(asAlice().doc("stockMovements/m1").get());
+    await assertFails(asDoctor().doc("stockMovements/m1").get());
+  });
+  it("reception and admin create with a non-zero qty and a known type", async () => {
+    await assertSucceeds(asAdmin().doc("stockMovements/m2").set(stockMovement(ADMIN)));
+    await assertSucceeds(asAlice().doc("stockMovements/m3").set(stockMovement(ALICE, { qty: -1, type: "sale", refId: "sale-1" })));
+    await assertFails(asDoctor().doc("stockMovements/m4").set(stockMovement(DOCTOR)));
+    await assertFails(asAdmin().doc("stockMovements/m4").set(stockMovement(ALICE)));
+    await assertFails(asAdmin().doc("stockMovements/m4").set(stockMovement(ADMIN, { qty: 0 })));
+    await assertFails(asAdmin().doc("stockMovements/m4").set(stockMovement(ADMIN, { type: "magic" })));
+    await assertFails(asAdmin().doc("stockMovements/m4").set(stockMovement(ADMIN, { itemId: "" })));
+    await assertFails(asAdmin().doc("stockMovements/m4").set(stockMovement(ADMIN, { branchId: "other" })));
+  });
+  it("never updated or deleted", async () => {
+    await assertFails(asAdmin().doc("stockMovements/m1").update({ qty: 99 }));
+    await assertFails(asAdmin().doc("stockMovements/m1").delete());
+  });
+});
+
+describe("suppliers and purchases", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("suppliers/s1").set(supplier(ADMIN));
+      await ctx.firestore().doc("purchases/p1").set(purchase(ADMIN));
+    });
+  });
+  it("admin only reads", async () => {
+    await assertSucceeds(asAdmin().collection("suppliers").get());
+    await assertSucceeds(asAdmin().collection("purchases").orderBy("date", "desc").get());
+    await assertFails(asAlice().doc("suppliers/s1").get());
+    await assertFails(asAlice().doc("purchases/p1").get());
+  });
+  it("admin creates and updates suppliers with a name", async () => {
+    await assertSucceeds(asAdmin().doc("suppliers/s2").set(supplier(ADMIN)));
+    await assertSucceeds(asAdmin().doc("suppliers/s1").update({ phone: "0311", active: false, updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("suppliers/s3").set(supplier(ADMIN, { name: "" })));
+    await assertFails(asAdmin().doc("suppliers/s3").set(supplier(ALICE)));
+    await assertFails(asAlice().doc("suppliers/s3").set(supplier(ALICE)));
+    await assertFails(asAdmin().doc("suppliers/s1").update({ phone: "x", updatedBy: ALICE }));
+    await assertFails(asAdmin().doc("suppliers/s1").delete());
+  });
+  it("admin creates purchases with a valid shape; never updates or deletes", async () => {
+    await assertSucceeds(asAdmin().doc("purchases/p2").set(purchase(ADMIN)));
+    await assertFails(asAlice().doc("purchases/p3").set(purchase(ALICE)));
+    await assertFails(asAdmin().doc("purchases/p3").set(purchase(ALICE)));
+    await assertFails(asAdmin().doc("purchases/p3").set(purchase(ADMIN, { supplierId: "" })));
+    await assertFails(asAdmin().doc("purchases/p3").set(purchase(ADMIN, { billNo: "" })));
+    await assertFails(asAdmin().doc("purchases/p3").set(purchase(ADMIN, { date: "" })));
+    await assertFails(asAdmin().doc("purchases/p3").set(purchase(ADMIN, { items: "none" })));
+    await assertFails(asAdmin().doc("purchases/p3").set(purchase(ADMIN, { total: -1 })));
+    await assertFails(asAdmin().doc("purchases/p3").set(purchase(ADMIN, { branchId: "other" })));
+    await assertFails(asAdmin().doc("purchases/p1").update({ note: "x", updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("purchases/p1").delete());
+  });
+});
+
+describe("expenses", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("expenses/e1").set(expense(ADMIN));
+    });
+  });
+  it("admin only reads", async () => {
+    await assertSucceeds(asAdmin().collection("expenses").get());
+    await assertFails(asAlice().doc("expenses/e1").get());
+    await assertFails(asDoctor().doc("expenses/e1").get());
+  });
+  it("admin creates with a valid shape and createdBy = self", async () => {
+    await assertSucceeds(asAdmin().doc("expenses/e2").set(expense(ADMIN)));
+    await assertSucceeds(asAdmin().doc("expenses/e3").set(expense(ADMIN, { category: "rent", source: "manual", refId: null })));
+    await assertFails(asAlice().doc("expenses/e4").set(expense(ALICE)));
+    await assertFails(asAdmin().doc("expenses/e4").set(expense(ALICE)));
+    await assertFails(asAdmin().doc("expenses/e4").set(expense(ADMIN, { amount: -5 })));
+    await assertFails(asAdmin().doc("expenses/e4").set(expense(ADMIN, { category: "fun" })));
+    await assertFails(asAdmin().doc("expenses/e4").set(expense(ADMIN, { source: "magic" })));
+    await assertFails(asAdmin().doc("expenses/e4").set(expense(ADMIN, { deleted: true })));
+    await assertFails(asAdmin().doc("expenses/e4").set(expense(ADMIN, { date: "" })));
+    await assertFails(asAdmin().doc("expenses/e4").set(expense(ADMIN, { branchId: "other" })));
+  });
+  it("nobody deletes", async () => {
+    await assertFails(asAdmin().doc("expenses/e1").delete());
   });
 });

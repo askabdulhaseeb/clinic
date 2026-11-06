@@ -185,7 +185,7 @@ class _Menu extends StatelessWidget {
       case _Action.deactivate:
         final confirmed = await showDialog<bool>(
           context: context,
-          builder: (_) => AlertDialog(
+          builder: (dialog) => AlertDialog(
             title: const Text('Deactivate department?'),
             content: Text(
               '${department.name} will no longer appear when creating visits. '
@@ -193,11 +193,11 @@ class _Menu extends StatelessWidget {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
+                onPressed: () => Navigator.of(dialog).pop(false),
                 child: const Text('Cancel'),
               ),
               FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
+                onPressed: () => Navigator.of(dialog).pop(true),
                 child: const Text('Deactivate'),
               ),
             ],

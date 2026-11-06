@@ -448,6 +448,100 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ----- inventoryItems/{itemId}  (§4.15, Phase 7A) ----------------------
+    // Admin manages items; Reception may only move `stock` (the sale batch
+    // decrements it). A lens item's ID is its lensKey.
+    function isNonNegativeInt(v) {
+      return v is int && v >= 0;
+    }
+
+    function itemShapeValid(i, itemId) {
+      return i.category in ['medicine', 'frame', 'lens', 'consumable']
+        && isNonEmptyString(i.name)
+        && isNonNegativeInt(i.purchasePrice)
+        && isNonNegativeInt(i.salePrice)
+        && i.stock is int
+        && isNonNegativeInt(i.lowStockThreshold)
+        && i.active is bool
+        && (i.category != 'lens' || (i.lens is map && i.lensKey == itemId));
+    }
+
+    match /inventoryItems/{itemId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin()
+        && itemShapeValid(request.resource.data, itemId)
+        && inCallerBranch(request.resource.data.branchId)
+        && createdByIsCaller();
+      allow update: if
+        (isAdmin()
+          && itemShapeValid(request.resource.data, itemId)
+          && !changedKeys().hasAny(['branchId', 'createdAt', 'createdBy'])
+          && updatedByIsCaller())
+        ||
+        (isReception()
+          && changedKeys().hasOnly(['stock', 'updatedAt', 'updatedBy'])
+          && request.resource.data.stock is int
+          && updatedByIsCaller());
+      allow delete: if false;
+    }
+
+    // ----- stockMovements/{movementId}  (§4.18) ---------------------------
+    // Append-only ledger written inside the purchase, sale and adjustment
+    // batches. Admin reads the history; nobody edits it.
+    match /stockMovements/{movementId} {
+      allow read: if isAdmin();
+      allow create: if isReceptionOrAdmin()
+        && isNonEmptyString(request.resource.data.itemId)
+        && request.resource.data.qty is int
+        && request.resource.data.qty != 0
+        && request.resource.data.type in ['purchase', 'sale', 'operationUse', 'adjustment']
+        && inCallerBranch(request.resource.data.branchId)
+        && createdByIsCaller();
+      allow update, delete: if false;
+    }
+
+    // ----- suppliers/{supplierId}  (§4.16) --------------------------------
+    match /suppliers/{supplierId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && isNonEmptyString(request.resource.data.name)
+        && createdByIsCaller();
+      allow update: if isAdmin()
+        && isNonEmptyString(request.resource.data.name)
+        && !changedKeys().hasAny(['createdAt', 'createdBy'])
+        && updatedByIsCaller();
+      allow delete: if false;
+    }
+
+    // ----- purchases/{purchaseId}  (§4.17): immutable bills ----------------
+    match /purchases/{purchaseId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && isNonEmptyString(request.resource.data.supplierId)
+        && isNonEmptyString(request.resource.data.billNo)
+        && isNonEmptyString(request.resource.data.date)
+        && request.resource.data.items is list
+        && isNonNegativeInt(request.resource.data.total)
+        && inCallerBranch(request.resource.data.branchId)
+        && createdByIsCaller();
+      allow update, delete: if false;
+    }
+
+    // ----- expenses/{expenseId}  (§4.20): purchase expenses in 7A ---------
+    // Manual expenses and corrections open in Phase 8.
+    match /expenses/{expenseId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.category in ['rent', 'salary', 'utilities', 'supplies', 'purchase', 'payout', 'other']
+        && isNonNegativeInt(request.resource.data.amount)
+        && isNonEmptyString(request.resource.data.date)
+        && request.resource.data.source in ['manual', 'purchase', 'payout']
+        && request.resource.data.deleted == false
+        && inCallerBranch(request.resource.data.branchId)
+        && createdByIsCaller();
+      allow update, delete: if false;
+    }
+
     // ----- counters/{counterId}  (§4.9): Functions only --------------------
     match /counters/{counterId} {
       allow read, write: if false;

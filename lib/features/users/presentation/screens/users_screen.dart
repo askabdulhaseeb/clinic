@@ -280,7 +280,7 @@ class _UserMenu extends StatelessWidget {
       case _UserAction.deactivate:
         final confirmed = await showDialog<bool>(
           context: context,
-          builder: (_) => AlertDialog(
+          builder: (dialog) => AlertDialog(
             title: const Text('Deactivate user?'),
             content: Text(
               '${user.displayName} will be signed out and cannot sign in '
@@ -288,11 +288,11 @@ class _UserMenu extends StatelessWidget {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
+                onPressed: () => Navigator.of(dialog).pop(false),
                 child: const Text('Cancel'),
               ),
               FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
+                onPressed: () => Navigator.of(dialog).pop(true),
                 child: const Text('Deactivate'),
               ),
             ],

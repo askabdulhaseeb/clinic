@@ -64,6 +64,52 @@ abstract final class AppRoutes {
   static const String adminAppointments = '/admin/appointments';
   static const String adminAppointmentNew = '/admin/appointments/new';
   static const String adminInventory = '/admin/inventory';
+
+  // Admin inventory (Phase 7A). `/admin/inventory` redirects to medicines;
+  // the category keys (`medicine`, `frame`, `lens`, `consumable`) are tabs.
+  static const String adminInventoryLens = '/admin/inventory/lens';
+  static const String adminInventorySuppliers = '/admin/inventory/suppliers';
+  static const String adminInventoryPurchases = '/admin/inventory/purchases';
+  static const String adminInventoryPurchaseNew =
+      '/admin/inventory/purchases/new';
+  static const String adminInventoryPurchasePattern =
+      '/admin/inventory/purchases/:id';
+  static const String adminInventoryItemNew = '/admin/inventory/items/new';
+  static const String adminInventoryItemPattern = '/admin/inventory/items/:id';
+  static const String adminInventoryItemEditPattern =
+      '/admin/inventory/items/:id/edit';
+
+  /// `/admin/inventory/<category key>`.
+  static String adminInventoryCategory(String categoryKey) =>
+      '$adminInventory/$categoryKey';
+
+  /// `/admin/inventory/items/new?category=&lensType=&sph=&cyl=`; the lens
+  /// fields come from an empty grid cell.
+  static String adminInventoryItemNewFor({
+    required String categoryKey,
+    String? lensType,
+    String? sph,
+    String? cyl,
+  }) => Uri(
+    path: adminInventoryItemNew,
+    queryParameters: {
+      'category': categoryKey,
+      'lensType': ?lensType,
+      'sph': ?sph,
+      'cyl': ?cyl,
+    },
+  ).toString();
+
+  /// Item IDs may be lens keys (`singleVision|+1.25|-0.50`), so they are
+  /// encoded in the path.
+  static String adminInventoryItem(String id) =>
+      '$adminInventory/items/${Uri.encodeComponent(id)}';
+
+  static String adminInventoryItemEdit(String id) =>
+      '${adminInventoryItem(id)}/edit';
+
+  static String adminInventoryPurchase(String id) =>
+      '$adminInventoryPurchases/$id';
   static const String adminFinance = '/admin/finance';
   static const String adminCatalog = '/admin/catalog';
   static const String adminSettings = '/admin/settings';

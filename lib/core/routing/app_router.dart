@@ -13,6 +13,12 @@ import '../../features/auth/presentation/viewmodels/session_controller.dart';
 import '../../features/catalog/presentation/screens/catalog_screen.dart';
 import '../../features/catalog/presentation/screens/doctor_form_screen.dart';
 import '../../features/catalog/presentation/screens/visit_type_form_screen.dart';
+import '../../features/inventory/domain/entities/inventory_item.dart';
+import '../../features/inventory/presentation/screens/inventory_screen.dart';
+import '../../features/inventory/presentation/screens/item_detail_screen.dart';
+import '../../features/inventory/presentation/screens/item_form_screen.dart';
+import '../../features/inventory/presentation/screens/purchase_detail_screen.dart';
+import '../../features/inventory/presentation/screens/purchase_form_screen.dart';
 import '../../features/operations/presentation/screens/doctor_operations_screen.dart';
 import '../../features/operations/presentation/screens/operation_detail_screen.dart';
 import '../../features/patients/presentation/screens/patient_detail_screen.dart';
@@ -149,6 +155,8 @@ ShellRoute _roleShell(UserRole role) {
             path: d.path,
             redirect: (_, _) => AppRoutes.adminCatalogDepartments,
           )
+        else if (d.path == AppRoutes.adminInventory)
+          GoRoute(path: d.path, redirect: (_, _) => InventoryTab.medicine.path)
         else
           GoRoute(path: d.path, builder: (_, _) => _screenFor(d.path, d.label)),
       if (role == UserRole.admin) ..._adminRoutes(),
@@ -243,8 +251,43 @@ List<GoRoute> _doctorRoutes() => [
   ),
 ];
 
-/// Admin pages below the sidebar destinations (Phase 2: catalog, setup).
+/// Admin pages below the sidebar destinations (Phase 2: catalog, setup;
+/// Phase 7A: inventory).
 List<GoRoute> _adminRoutes() => [
+  // Inventory tabs; `new` routes are declared before `:id` patterns.
+  for (final tab in InventoryTab.values)
+    GoRoute(
+      path: tab.path,
+      builder: (_, _) => InventoryScreen(tab: tab),
+    ),
+  GoRoute(
+    path: AppRoutes.adminInventoryItemNew,
+    builder: (_, state) => ItemFormScreen(
+      categoryKey:
+          state.uri.queryParameters['category'] ?? ItemCategory.medicine.key,
+      lensTypeKey: state.uri.queryParameters['lensType'],
+      sph: state.uri.queryParameters['sph'],
+      cyl: state.uri.queryParameters['cyl'],
+    ),
+  ),
+  GoRoute(
+    path: AppRoutes.adminInventoryItemPattern,
+    builder: (_, state) =>
+        ItemDetailScreen(itemId: state.pathParameters['id']!),
+  ),
+  GoRoute(
+    path: AppRoutes.adminInventoryItemEditPattern,
+    builder: (_, state) => ItemFormScreen(itemId: state.pathParameters['id']),
+  ),
+  GoRoute(
+    path: AppRoutes.adminInventoryPurchaseNew,
+    builder: (_, _) => const PurchaseFormScreen(),
+  ),
+  GoRoute(
+    path: AppRoutes.adminInventoryPurchasePattern,
+    builder: (_, state) =>
+        PurchaseDetailScreen(purchaseId: state.pathParameters['id']!),
+  ),
   GoRoute(
     path: AppRoutes.adminCatalogDepartments,
     builder: (_, _) => const CatalogScreen(tab: CatalogTab.departments),

@@ -20,6 +20,9 @@ import 'features/auth/domain/repositories/dev_tools_repository.dart';
 import 'features/auth/presentation/viewmodels/session_controller.dart';
 import 'features/catalog/data/repositories/catalog_repository_impl.dart';
 import 'features/catalog/domain/repositories/catalog_repository.dart';
+import 'features/inventory/data/repositories/inventory_repository_impl.dart';
+import 'features/inventory/domain/repositories/inventory_repository.dart';
+import 'features/inventory/presentation/viewmodels/inventory_controller.dart';
 import 'features/operations/data/repositories/operations_repository_impl.dart';
 import 'features/operations/domain/repositories/operations_repository.dart';
 import 'features/patients/data/repositories/patients_repository_impl.dart';
@@ -95,6 +98,10 @@ Future<void> main() async {
           create: (_) =>
               AppointmentsRepositoryImpl(firestore: firestore, auth: auth),
         ),
+        Provider<InventoryRepository>(
+          create: (_) =>
+              InventoryRepositoryImpl(firestore: firestore, auth: auth),
+        ),
         Provider<SettingsRepository>(
           create: (_) => SettingsRepositoryImpl(
             firestore: firestore,
@@ -131,6 +138,16 @@ Future<void> main() async {
           lazy: false,
           create: (context) => TodayVisitsController(
             repository: context.read<VisitsRepository>(),
+            session: context.read<SessionController>(),
+          ),
+        ),
+        // One listener on inventory items for reception and admin sessions:
+        // category lists, lens grid, low stock, sales (FIREBASE_ARCHITECTURE
+        // §9, Phase 7A).
+        ChangeNotifierProvider<InventoryController>(
+          lazy: false,
+          create: (context) => InventoryController(
+            repository: context.read<InventoryRepository>(),
             session: context.read<SessionController>(),
           ),
         ),
