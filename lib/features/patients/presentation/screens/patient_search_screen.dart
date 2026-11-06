@@ -407,6 +407,12 @@ class PatientRow extends StatelessWidget {
               ),
               child: const Text('Book'),
             ),
+            TextButton(
+              key: Key('patient-sell-${patient.id}'),
+              onPressed: () =>
+                  context.go(AppRoutes.saleNewFor(role, patientId: patient.id)),
+              child: const Text('Sell'),
+            ),
           ],
           IconButton(
             key: Key('patient-open-${patient.id}'),

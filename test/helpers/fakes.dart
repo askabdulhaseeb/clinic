@@ -38,6 +38,8 @@ import 'package:ramzan/features/prescriptions/domain/entities/prescription.dart'
 import 'package:ramzan/features/prescriptions/domain/repositories/prescriptions_repository.dart';
 import 'package:ramzan/features/reports/domain/entities/report.dart';
 import 'package:ramzan/features/reports/domain/repositories/reports_repository.dart';
+import 'package:ramzan/features/sales/domain/entities/sale.dart';
+import 'package:ramzan/features/sales/domain/repositories/sales_repository.dart';
 import 'package:ramzan/features/settings/domain/entities/clinic_settings.dart';
 import 'package:ramzan/features/settings/domain/entities/initial_setup_input.dart';
 import 'package:ramzan/features/settings/domain/repositories/settings_repository.dart';
@@ -325,6 +327,83 @@ Purchase samplePurchase({
   createdBy: 'admin-1',
   createdAt: DateTime.utc(2026, 11, 6, 5),
 );
+
+class MockSalesRepository extends Mock implements SalesRepository {}
+
+void registerSalesFallbacks() {
+  registerFallbackValue(
+    const SaleInput(
+      patientId: null,
+      customerName: '',
+      lines: [],
+      discountAmount: 0,
+      discountReason: '',
+      paymentMethod: PaymentMethod.cash,
+    ),
+  );
+  registerFallbackValue(sampleSale());
+}
+
+/// Two medicines and one lens sold to Ali Khan, cash, no discount.
+Sale sampleSale({
+  String id = 'sale-1',
+  String? patientId = 'pat-ali',
+  String patientName = 'Ali Khan',
+  String patientNo = '26-00001',
+  String phone = '03001234567',
+  String? visitId,
+  String date = '2026-11-06',
+  List<SaleLine>? items,
+  int discountAmount = 0,
+  String discountReason = '',
+  PaymentMethod paymentMethod = PaymentMethod.cash,
+  String paymentRef = '',
+  bool deleted = false,
+  String deleteReason = '',
+  String createdBy = 'rec-1',
+  DateTime? createdAt,
+}) {
+  final lines =
+      items ??
+      [
+        const SaleLine(
+          itemId: 'item-arnica',
+          name: 'Arnica 30',
+          category: ItemCategory.medicine,
+          qty: 2,
+          unitPrice: 150,
+        ),
+        SaleLine(
+          itemId: sampleLensItem().id,
+          name: sampleLensItem().name,
+          category: ItemCategory.lens,
+          qty: 1,
+          unitPrice: 900,
+          lensKey: sampleLensItem().id,
+        ),
+      ];
+  final subtotal = lines.fold(0, (s, l) => s + l.lineTotal);
+  return Sale(
+    id: id,
+    patientId: patientId,
+    patientName: patientName,
+    patientNo: patientId == null ? '' : patientNo,
+    phone: patientId == null ? '' : phone,
+    visitId: visitId,
+    date: date,
+    items: lines,
+    subtotal: subtotal,
+    discountAmount: discountAmount,
+    discountReason: discountReason,
+    total: subtotal - discountAmount,
+    paymentMethod: paymentMethod,
+    paymentRef: paymentRef,
+    deleted: deleted,
+    deleteReason: deleteReason,
+    createdBy: createdBy,
+    createdAt: createdAt ?? DateTime.utc(2026, 11, 6, 6),
+  );
+}
 
 class MockAppointmentsRepository extends Mock
     implements AppointmentsRepository {}
@@ -839,6 +918,7 @@ Widget wrapWithProviders({
   AppointmentsRepository? appointmentsRepository,
   InventoryRepository? inventoryRepository,
   InventoryController? inventoryController,
+  SalesRepository? salesRepository,
   DevToolsRepository? devTools,
   Size size = const Size(1280, 800),
 }) {
@@ -873,6 +953,8 @@ Widget wrapWithProviders({
         ChangeNotifierProvider<InventoryController>.value(
           value: inventoryController,
         ),
+      if (salesRepository != null)
+        Provider<SalesRepository>.value(value: salesRepository),
       if (devTools != null) Provider<DevToolsRepository>.value(value: devTools),
     ],
     child: MediaQuery(

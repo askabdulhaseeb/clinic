@@ -6,14 +6,24 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../../../core/utils/karachi_date.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../core/utils/phone.dart';
+import '../../../sales/domain/entities/sale.dart';
 import '../../../settings/domain/entities/clinic_settings.dart';
 import '../../domain/entities/visit.dart';
 
 /// A4 visit receipt (UI_DESIGN §6), built on the client so it prints
-/// offline. One page per copy.
+/// offline. One page per copy. When the visit has a linked [Sale], the
+/// items sold and a grand total are printed under the fee table (decided
+/// 6 Nov 2026). The shared pieces (header, blocks, items table) are also
+/// used by the sale receipt.
 abstract final class ReceiptPdf {
   static const int minCopies = ClinicSettings.minReceiptCopies;
   static const int maxCopies = ClinicSettings.maxReceiptCopies;
+
+  static const pw.TextStyle bold = pw.TextStyle(fontWeight: pw.FontWeight.bold);
+  static const pw.TextStyle muted = pw.TextStyle(
+    color: PdfColors.grey700,
+    fontSize: 10,
+  );
 
   static const List<String> _months = [
     'Jan',
@@ -42,16 +52,19 @@ abstract final class ReceiptPdf {
   }
 
   /// Short receipt number: the first six characters of the visit ID.
-  static String receiptNo(Visit v) {
-    final id = v.id.replaceFirst(RegExp('^visit-'), '');
-    return (id.length > 6 ? id.substring(0, 6) : id).toUpperCase();
+  static String receiptNo(Visit v) => shortNo(v.id, prefix: 'visit-');
+
+  static String shortNo(String id, {String prefix = ''}) {
+    final bare = prefix.isEmpty ? id : id.replaceFirst(RegExp('^$prefix'), '');
+    return (bare.length > 6 ? bare.substring(0, 6) : bare).toUpperCase();
   }
 
   /// `04 Nov 2026, 11:30 AM` in Karachi time; the date alone when the
   /// creation time is unknown.
-  static String dateTimeLine(Visit v) {
-    final at = v.createdAt;
-    if (at == null) return formatDate(KarachiDate.parse(v.date));
+  static String dateTimeLine(Visit v) => dateTimeLineFor(v.createdAt, v.date);
+
+  static String dateTimeLineFor(DateTime? at, String date) {
+    if (at == null) return formatDate(KarachiDate.parse(date));
     final k = KarachiDate.now(at);
     return '${formatDate(k)}, ${formatTime(k)}';
   }
@@ -62,6 +75,7 @@ abstract final class ReceiptPdf {
     required Visit visit,
     required ClinicSettings settings,
     required int copies,
+    Sale? sale,
     Uint8List? logo,
   }) async {
     final out = PdfStream();
@@ -69,6 +83,7 @@ abstract final class ReceiptPdf {
       visit: visit,
       settings: settings,
       copies: copies,
+      sale: sale,
       logo: logo,
     ).write(out);
     return out.output();
@@ -78,6 +93,7 @@ abstract final class ReceiptPdf {
     required Visit visit,
     required ClinicSettings settings,
     required int copies,
+    Sale? sale,
     Uint8List? logo,
   }) {
     final n = copies.clamp(minCopies, maxCopies);
@@ -91,73 +107,46 @@ abstract final class ReceiptPdf {
         pw.Page(
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(36),
-          build: (_) => _page(visit, settings, logoImage),
+          build: (_) => _page(visit, settings, logoImage, sale),
         ),
       );
     }
     return doc;
   }
 
-  static pw.Widget _page(Visit v, ClinicSettings s, pw.MemoryImage? logo) {
-    const bold = pw.TextStyle(fontWeight: pw.FontWeight.bold);
-    const muted = pw.TextStyle(color: PdfColors.grey700, fontSize: 10);
+  static pw.Widget _page(
+    Visit v,
+    ClinicSettings s,
+    pw.MemoryImage? logo,
+    Sale? sale,
+  ) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
-        pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            if (logo != null)
-              pw.Container(
-                width: 56,
-                height: 56,
-                margin: const pw.EdgeInsets.only(right: 12),
-                child: pw.Image(logo, fit: pw.BoxFit.contain),
-              ),
-            pw.Expanded(
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(
-                    s.clinicName,
-                    style: const pw.TextStyle(
-                      fontSize: 20,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
-                  ),
-                  if (s.address.isNotEmpty) pw.Text(s.address, style: muted),
-                  if (s.phone.isNotEmpty) pw.Text(s.phone, style: muted),
-                ],
-              ),
-            ),
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.end,
-              children: [
-                pw.Text('RECEIPT', style: bold),
-                pw.Text('No. ${receiptNo(v)}', style: muted),
-                pw.Text(dateTimeLine(v), style: muted),
-              ],
-            ),
-          ],
+        clinicHeader(
+          s,
+          logo,
+          title: 'RECEIPT',
+          no: receiptNo(v),
+          dateLine: dateTimeLine(v),
         ),
-        pw.Divider(thickness: 1, color: PdfColors.grey500),
         pw.SizedBox(height: 8),
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Expanded(
-              child: _block('Patient', [
+              child: block('Patient', [
                 v.patientName,
                 'Patient no. ${v.patientNo}',
                 if (v.phone.isNotEmpty) Phone.display(v.phone),
-              ], bold),
+              ]),
             ),
             pw.Expanded(
-              child: _block('Visit', [
+              child: block('Visit', [
                 v.doctorName,
                 v.visitTypeName,
                 'Token ${v.tokenLabel}',
-              ], bold),
+              ]),
             ),
             pw.Container(
               padding: const pw.EdgeInsets.symmetric(
@@ -184,30 +173,34 @@ abstract final class ReceiptPdf {
           ],
         ),
         pw.SizedBox(height: 16),
-        pw.TableHelper.fromTextArray(
-          headerStyle: bold,
-          cellAlignments: {1: pw.Alignment.centerRight},
-          headerAlignments: {1: pw.Alignment.centerRight},
-          columnWidths: {
-            0: const pw.FlexColumnWidth(3),
-            1: const pw.FlexColumnWidth(1),
-          },
-          headers: ['Description', 'Amount'],
-          data: [
-            ['Consultation fee (${v.visitTypeName})', Money.format(v.fee)],
-            if (v.hasDiscount)
-              [
-                'Discount (${v.discountReason})',
-                '-${Money.format(v.discountAmount)}',
-              ],
-            ['Net paid', Money.format(v.netAmount)],
+        amountsTable([
+          ['Consultation fee (${v.visitTypeName})', Money.format(v.fee)],
+          if (v.hasDiscount)
             [
-              'Payment: ${v.paymentMethod.label}'
-                  '${v.paymentRef.isEmpty ? '' : ' (${v.paymentRef})'}',
-              '',
+              'Discount (${v.discountReason})',
+              '-${Money.format(v.discountAmount)}',
             ],
+          ['Net paid', Money.format(v.netAmount)],
+          [
+            'Payment: ${v.paymentMethod.label}'
+                '${v.paymentRef.isEmpty ? '' : ' (${v.paymentRef})'}',
+            '',
           ],
-        ),
+        ]),
+        if (sale != null) ...[
+          pw.SizedBox(height: 14),
+          pw.Text('ITEMS SOLD', style: muted),
+          pw.SizedBox(height: 4),
+          itemsTable(sale),
+          pw.SizedBox(height: 6),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.end,
+            children: [
+              pw.Text('Grand total: ', style: bold),
+              pw.Text(Money.format(v.netAmount + sale.total), style: bold),
+            ],
+          ),
+        ],
         pw.Spacer(),
         if (s.receiptFooter.isNotEmpty)
           pw.Text(
@@ -219,11 +212,118 @@ abstract final class ReceiptPdf {
     );
   }
 
-  static pw.Widget _block(
-    String title,
-    List<String> lines,
-    pw.TextStyle bold,
-  ) => pw.Column(
+  /// Clinic name, address and phone on the left; [title], number and date
+  /// on the right; a rule below.
+  static pw.Widget clinicHeader(
+    ClinicSettings s,
+    pw.MemoryImage? logo, {
+    required String title,
+    required String no,
+    required String dateLine,
+  }) => pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+    children: [
+      pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          if (logo != null)
+            pw.Container(
+              width: 56,
+              height: 56,
+              margin: const pw.EdgeInsets.only(right: 12),
+              child: pw.Image(logo, fit: pw.BoxFit.contain),
+            ),
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  s.clinicName,
+                  style: const pw.TextStyle(
+                    fontSize: 20,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                if (s.address.isNotEmpty) pw.Text(s.address, style: muted),
+                if (s.phone.isNotEmpty) pw.Text(s.phone, style: muted),
+              ],
+            ),
+          ),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Text(title, style: bold),
+              pw.Text('No. $no', style: muted),
+              pw.Text(dateLine, style: muted),
+            ],
+          ),
+        ],
+      ),
+      pw.Divider(thickness: 1, color: PdfColors.grey500),
+    ],
+  );
+
+  /// Description and amount, two columns.
+  static pw.Widget amountsTable(List<List<String>> rows) =>
+      pw.TableHelper.fromTextArray(
+        headerStyle: bold,
+        cellAlignments: {1: pw.Alignment.centerRight},
+        headerAlignments: {1: pw.Alignment.centerRight},
+        columnWidths: {
+          0: const pw.FlexColumnWidth(3),
+          1: const pw.FlexColumnWidth(1),
+        },
+        headers: ['Description', 'Amount'],
+        data: rows,
+      );
+
+  /// Item, quantity, unit price and line total, then discount and total.
+  static pw.Widget itemsTable(Sale sale) => pw.TableHelper.fromTextArray(
+    headerStyle: bold,
+    cellAlignments: {
+      1: pw.Alignment.centerRight,
+      2: pw.Alignment.centerRight,
+      3: pw.Alignment.centerRight,
+    },
+    headerAlignments: {
+      1: pw.Alignment.centerRight,
+      2: pw.Alignment.centerRight,
+      3: pw.Alignment.centerRight,
+    },
+    columnWidths: {
+      0: const pw.FlexColumnWidth(4),
+      1: const pw.FlexColumnWidth(1),
+      2: const pw.FlexColumnWidth(1.5),
+      3: const pw.FlexColumnWidth(1.5),
+    },
+    headers: ['Item', 'Qty', 'Price', 'Total'],
+    data: [
+      for (final l in sale.items)
+        [
+          l.name,
+          '${l.qty}',
+          Money.format(l.unitPrice),
+          Money.format(l.lineTotal),
+        ],
+      if (sale.hasDiscount)
+        [
+          'Discount (${sale.discountReason})',
+          '',
+          '',
+          '-${Money.format(sale.discountAmount)}',
+        ],
+      ['Items total', '', '', Money.format(sale.total)],
+      [
+        'Payment: ${sale.paymentMethod.label}'
+            '${sale.paymentRef.isEmpty ? '' : ' (${sale.paymentRef})'}',
+        '',
+        '',
+        '',
+      ],
+    ],
+  );
+
+  static pw.Widget block(String title, List<String> lines) => pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
       pw.Text(

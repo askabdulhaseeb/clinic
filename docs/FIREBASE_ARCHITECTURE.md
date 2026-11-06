@@ -270,8 +270,9 @@ items: [ { itemId, name, category, qty, unitPrice, lineTotal, lensKey } ],
 subtotal, discountAmount, discountReason, total,
 paymentMethod, paymentRef,
 deleted, deletedAt, deletedBy, deleteReason,
-createdBy, createdAt, createdAtLocal, branchId
+createdBy, createdAt, createdAtLocal, updatedAt, updatedBy, branchId
 ```
+`patientId` is null for a walk-in customer (decided 6 Nov 2026); `patientName` is then the typed name. `lensKey` is set on lens lines only. Client batch (Phase 7B): create the sale, decrement each item's `stock` with `FieldValue.increment(-qty)` and write one `stockMovements` row per line (`type: sale`, negative `qty`, `refId` = sale ID). Stock may go negative (short stock warns but does not block). Void (Admin only): one batch sets `deleted`, `deletedAt`, `deletedBy`, `deleteReason`, increments each item's `stock` back and writes a positive `sale` movement per line with reason `Void: <reason>`; the items and totals never change after creation. `visits.saleId` is not written: the visit receipt finds the sale with a `visitId ==` read.
 
 ### 4.20 `expenses/{expenseId}`
 ```
@@ -363,7 +364,7 @@ Roles come from `request.auth.token.roles`. Helper functions: `isAdmin()`, `isRe
 | `suppliers` | Admin | Admin (`createdBy` = caller; non-empty `name`) | Admin (`updatedBy` = caller) | never |
 | `purchases` | Admin | Admin (`createdBy` = caller, `branchId` in claims; non-empty `supplierId`, `billNo`, `date`; `items` list; `total` int ≥ 0) | never (immutable, decided 6 Nov 2026) | never |
 | `stockMovements` | Admin | Reception, Admin (`createdBy` = caller, `branchId` in claims; non-empty `itemId`; `qty` int ≠ 0; `type` in purchase/sale/operationUse/adjustment) | never | never |
-| `sales` | any signed-in | Reception, Admin | Admin | never (soft) |
+| `sales` | any signed-in | Reception, Admin (`createdBy` = caller, `branchId` in claims; non-empty `patientName`, `date`; `items` non-empty list; `subtotal`, `discountAmount`, `total` ints ≥ 0 with `total == subtotal - discountAmount`; non-empty `discountReason` when `discountAmount > 0`; `paymentMethod` in the list; `deleted == false`; Phase 7B) | Admin: only `deleted`, `deletedAt`, `deletedBy`, `deleteReason`, `updatedAt`, `updatedBy` may change, `deleteReason` non-empty when deleted (`updatedBy` = caller) | never (soft) |
 | `expenses` | Admin | Admin (`createdBy` = caller, `branchId` in claims; `amount` int ≥ 0; `source` in manual/purchase/payout; `deleted == false`; Phase 7A opens read and create for the purchase batch) | Admin (Phase 8; `updatedBy` = caller) | never (soft) |
 | `payouts` | Admin | Admin | Admin | never |
 | `dailySummaries`, `auditLogs`, `counters`, `summaryEvents` | Admin (`counters`, `summaryEvents`: nobody) | Functions | Functions | never |
@@ -412,7 +413,7 @@ Rules: any signed-in user reads. Reception and Admin write under `reports` (Phas
 | `stockMovements` | `itemId asc, createdAt desc` (item movement history, last 50; Phase 7A, in `firestore.indexes.json`) |
 | `inventoryItems` | `category asc, active asc, name asc` (not needed: one listener on the collection, filtered on the client; decided 6 Nov 2026) |
 | `inventoryItems` | `category asc, lens.type asc, lens.sph asc, lens.cyl asc` (not needed: the lens grid is built on the client from the same listener) |
-| `sales` | `date asc, deleted asc, createdAt desc` |
+| `sales` | `date asc, deleted asc, createdAt desc` (not needed: Phase 7B queries `date ==` alone and filters and sorts on the client; `visitId ==` for the visit receipt) |
 | `expenses` | `date asc, deleted asc` |
 
 Firestore will also prompt for any missing index on first use; the list above is the expected set.

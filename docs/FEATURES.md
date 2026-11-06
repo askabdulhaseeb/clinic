@@ -98,6 +98,7 @@ Reception runs on the **web** at the front desk and must keep working **offline*
 | Hide a wrong report (soft delete, reason) | ✓ | | ✓ |
 | Print receipt | ✓ | | ✓ |
 | Sell inventory items | ✓ | | ✓ |
+| Void a sale (reason required, stock restored) | | | ✓ |
 | View own queue | | ✓ | ✓ |
 | View patient full history | | ✓ | ✓ |
 | Write prescription and notes | | ✓ | |
@@ -193,7 +194,10 @@ A user with two roles sees a role switcher. Permissions are the union of their r
 - Sell items (medicines, frames, lenses, consumables) to a patient, with or without a visit. Frames and lenses are separate line items. For a lens line, reception picks lens type and power; the app suggests the power from the patient's latest eye prescription. Stock decreases for that exact power.
 - Stock decreases on sale. Discount with reason allowed. Same payment methods.
 - If the stock this device knows about is short (fewer units than the line, or zero), the line shows a warning but the sale goes through (decided 6 Nov 2026, so an offline desk never loses a sale); stock may go negative and Admin corrects it with an adjustment.
-- Receipt for sale, or combined on the visit receipt when linked.
+- Receipt for sale, or combined on the visit receipt when linked. Decided 6 Nov 2026: the sale always prints its own receipt; when it is linked to a visit, the visit receipt also lists the items sold.
+- A walk-in customer without a patient record can buy (decided 6 Nov 2026): reception types the customer name instead of picking a patient. No lens suggestion in that case.
+- Admin sells from the same Sales page (`/admin/sales`, under More on phones) and from the visit and patient pages. Admin can void a wrongly entered sale with a reason; stock comes back (decided 6 Nov 2026). Reception cannot void.
+- A lens line is lens type + power + quantity (decided 6 Nov 2026): two different powers are two lines, the same power for both eyes is one line with quantity 2. The picker offers Add right / Add left from the latest eye prescription.
 
 ### 5.7 Receipt (A4)
 - Clinic name, logo, address, phone from Settings.

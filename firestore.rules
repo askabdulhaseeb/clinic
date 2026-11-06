@@ -542,6 +542,38 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ----- sales/{saleId}  (§4.19): Phase 7B ------------------------------
+    // Reception and Admin create (the batch also decrements `stock` and
+    // writes `stockMovements`); only Admin may void (soft delete with a
+    // reason); items and totals never change after creation.
+    function saleShapeValid(s) {
+      return isNonEmptyString(s.patientName)
+        && isNonEmptyString(s.date)
+        && s.items is list && s.items.size() > 0
+        && isNonNegativeInt(s.subtotal)
+        && isNonNegativeInt(s.discountAmount)
+        && isNonNegativeInt(s.total)
+        && s.total == s.subtotal - s.discountAmount
+        && (s.discountAmount == 0 || isNonEmptyString(s.discountReason))
+        && s.paymentMethod in ['cash', 'bank', 'jazzcash', 'easypaisa'];
+    }
+
+    match /sales/{saleId} {
+      allow read: if isSignedIn();
+      allow create: if isReceptionOrAdmin()
+        && saleShapeValid(request.resource.data)
+        && request.resource.data.deleted == false
+        && inCallerBranch(request.resource.data.branchId)
+        && createdByIsCaller();
+      allow update: if isAdmin()
+        && changedKeys().hasOnly(['deleted', 'deletedAt', 'deletedBy', 'deleteReason', 'updatedAt', 'updatedBy'])
+        && request.resource.data.deleted == true
+        && isNonEmptyString(request.resource.data.deleteReason)
+        && request.resource.data.deletedBy == request.auth.uid
+        && updatedByIsCaller();
+      allow delete: if false;
+    }
+
     // ----- counters/{counterId}  (§4.9): Functions only --------------------
     match /counters/{counterId} {
       allow read, write: if false;

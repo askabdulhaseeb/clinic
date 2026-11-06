@@ -32,6 +32,8 @@ import 'features/prescriptions/data/repositories/prescriptions_repository_impl.d
 import 'features/prescriptions/domain/repositories/prescriptions_repository.dart';
 import 'features/reports/data/repositories/reports_repository_impl.dart';
 import 'features/reports/domain/repositories/reports_repository.dart';
+import 'features/sales/data/repositories/sales_repository_impl.dart';
+import 'features/sales/domain/repositories/sales_repository.dart';
 import 'features/settings/data/repositories/settings_repository_impl.dart';
 import 'features/settings/domain/repositories/settings_repository.dart';
 import 'features/settings/presentation/viewmodels/settings_controller.dart';
@@ -101,6 +103,9 @@ Future<void> main() async {
         Provider<InventoryRepository>(
           create: (_) =>
               InventoryRepositoryImpl(firestore: firestore, auth: auth),
+        ),
+        Provider<SalesRepository>(
+          create: (_) => SalesRepositoryImpl(firestore: firestore, auth: auth),
         ),
         Provider<SettingsRepository>(
           create: (_) => SettingsRepositoryImpl(

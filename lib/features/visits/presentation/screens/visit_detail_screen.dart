@@ -14,6 +14,7 @@ import '../../../../core/widgets/status_chip.dart';
 import '../../../../core/widgets/token_chip.dart';
 import '../../../auth/domain/entities/user_role.dart';
 import '../../../catalog/presentation/widgets/action_error_listener.dart';
+import '../../../sales/domain/repositories/sales_repository.dart';
 import '../../../settings/domain/entities/clinic_settings.dart';
 import '../../../settings/presentation/viewmodels/settings_controller.dart';
 import '../../domain/repositories/visits_repository.dart';
@@ -42,6 +43,7 @@ class VisitDetailScreen extends StatelessWidget {
       key: ValueKey(visitId),
       create: (context) => VisitDetailViewModel(
         repository: context.read<VisitsRepository>(),
+        salesRepository: context.read<SalesRepository?>(),
         visitId: visitId,
         defaultCopies: settings.defaultReceiptCopies,
       ),
@@ -184,6 +186,47 @@ class VisitDetailView extends StatelessWidget {
       ),
     );
 
+    final sale = vm.sale;
+    final itemsCard = sale == null
+        ? null
+        : Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('Items sold', style: text.titleMedium),
+                      ),
+                      TextButton(
+                        key: Key('visit-sale-${sale.id}'),
+                        onPressed: () =>
+                            context.go(AppRoutes.saleFor(role, sale.id)),
+                        child: const Text('Open sale'),
+                      ),
+                    ],
+                  ),
+                  for (final l in sale.items)
+                    line('${l.qty} × ${l.name}', Money.format(l.lineTotal)),
+                  if (sale.hasDiscount)
+                    line(
+                      'Discount (${sale.discountReason})',
+                      '-${Money.format(sale.discountAmount)}',
+                      color: scheme.error,
+                    ),
+                  line('Items total', Money.format(sale.total), bold: true),
+                  line(
+                    'Grand total',
+                    Money.format(v.netAmount + sale.total),
+                    bold: true,
+                  ),
+                ],
+              ),
+            ),
+          );
+
     final receiptCard = Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -230,6 +273,18 @@ class VisitDetailView extends StatelessWidget {
             onBack: back,
             actions: [
               TextButton.icon(
+                key: const Key('visit-sell'),
+                onPressed: () => context.go(
+                  AppRoutes.saleNewFor(
+                    role,
+                    patientId: v.patientId,
+                    visitId: v.id,
+                  ),
+                ),
+                icon: const Icon(Icons.add_shopping_cart_outlined, size: 18),
+                label: const Text('Sell items'),
+              ),
+              TextButton.icon(
                 key: const Key('visit-open-patient'),
                 onPressed: () =>
                     context.go(AppRoutes.patientFor(role, v.patientId)),
@@ -245,7 +300,19 @@ class VisitDetailView extends StatelessWidget {
                   ? Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(flex: 3, child: visitCard),
+                        Expanded(
+                          flex: 3,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              visitCard,
+                              if (itemsCard != null) ...[
+                                const SizedBox(height: 12),
+                                itemsCard,
+                              ],
+                            ],
+                          ),
+                        ),
                         const SizedBox(width: 12),
                         Expanded(flex: 2, child: receiptCard),
                       ],
@@ -254,6 +321,10 @@ class VisitDetailView extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         visitCard,
+                        if (itemsCard != null) ...[
+                          const SizedBox(height: 12),
+                          itemsCard,
+                        ],
                         const SizedBox(height: 12),
                         receiptCard,
                       ],

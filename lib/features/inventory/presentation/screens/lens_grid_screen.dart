@@ -8,6 +8,7 @@ import '../../domain/entities/inventory_item.dart';
 import '../../domain/entities/lens_power.dart';
 import '../viewmodels/inventory_controller.dart';
 import '../viewmodels/lens_grid_vm.dart';
+import '../widgets/lens_grid_table.dart';
 
 /// Admin → Inventory → Lenses (UI_DESIGN §4.10).
 class LensGridScreen extends StatelessWidget {
@@ -23,36 +24,10 @@ class LensGridScreen extends StatelessWidget {
   }
 }
 
-/// Body; expects a [LensGridViewModel] above it. Rows are built lazily;
-/// the grid opens with SPH 0.00 a few rows down from the top.
-class LensGridView extends StatefulWidget {
+/// Body; expects a [LensGridViewModel] above it. The sheet itself is
+/// [LensGridTable], shared with the sale picker.
+class LensGridView extends StatelessWidget {
   const LensGridView({super.key});
-
-  static const double cellWidth = 56;
-  static const double rowHeight = 36;
-  static const double labelWidth = 72;
-
-  @override
-  State<LensGridView> createState() => _LensGridViewState();
-}
-
-class _LensGridViewState extends State<LensGridView> {
-  late final ScrollController _vertical;
-
-  @override
-  void initState() {
-    super.initState();
-    final zeroRow = LensGrid.sphValues.indexOf(0);
-    _vertical = ScrollController(
-      initialScrollOffset: (zeroRow - 10) * LensGridView.rowHeight,
-    );
-  }
-
-  @override
-  void dispose() {
-    _vertical.dispose();
-    super.dispose();
-  }
 
   void _onCell(BuildContext context, LensPower power, InventoryItem? item) {
     if (item != null) {
@@ -72,7 +47,6 @@ class _LensGridViewState extends State<LensGridView> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<LensGridViewModel>();
-    final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     if (vm.loading) return const Center(child: CircularProgressIndicator());
     if (vm.loadError != null) {
@@ -82,9 +56,6 @@ class _LensGridViewState extends State<LensGridView> {
         message: vm.loadError,
       );
     }
-    final width =
-        LensGridView.labelWidth +
-        LensGrid.cylValues.length * LensGridView.cellWidth;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -115,131 +86,14 @@ class _LensGridViewState extends State<LensGridView> {
           ),
         ),
         Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: width,
-              child: Column(
-                children: [
-                  SizedBox(
-                    height: LensGridView.rowHeight,
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: LensGridView.labelWidth,
-                          child: Center(
-                            child: Text('SPH \\ CYL', style: text.labelSmall),
-                          ),
-                        ),
-                        for (final cyl in LensGrid.cylValues)
-                          SizedBox(
-                            width: LensGridView.cellWidth,
-                            child: Center(
-                              child: Text(
-                                LensPower.format(cyl),
-                                style: text.labelSmall,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: ListView.builder(
-                      controller: _vertical,
-                      itemExtent: LensGridView.rowHeight,
-                      itemCount: LensGrid.sphValues.length,
-                      itemBuilder: (context, row) {
-                        final sph = LensGrid.sphValues[row];
-                        return Row(
-                          children: [
-                            SizedBox(
-                              width: LensGridView.labelWidth,
-                              child: Center(
-                                child: Text(
-                                  LensPower.format(sph),
-                                  style: text.labelMedium,
-                                ),
-                              ),
-                            ),
-                            for (final cyl in LensGrid.cylValues)
-                              _Cell(
-                                power: vm.powerAt(sph: sph, cyl: cyl),
-                                item: vm.cell(sph: sph, cyl: cyl),
-                                scheme: scheme,
-                                onTap: (p, i) => _onCell(context, p, i),
-                              ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          child: LensGridTable(
+            key: ValueKey(vm.type),
+            type: vm.type,
+            itemAt: (p) => vm.cell(sph: p.sph, cyl: p.cyl),
+            onCell: (p, i) => _onCell(context, p, i),
           ),
         ),
       ],
-    );
-  }
-}
-
-class _Cell extends StatelessWidget {
-  const _Cell({
-    required this.power,
-    required this.item,
-    required this.scheme,
-    required this.onTap,
-  });
-
-  final LensPower power;
-  final InventoryItem? item;
-  final ColorScheme scheme;
-  final void Function(LensPower, InventoryItem?) onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final i = item;
-    final Color fill;
-    final Color fg;
-    if (i == null) {
-      fill = scheme.surfaceContainerHighest.withValues(alpha: 0.5);
-      fg = scheme.outline;
-    } else if (i.isLowStock) {
-      fill = scheme.error.withValues(alpha: 0.15);
-      fg = scheme.error;
-    } else {
-      fill = scheme.primary.withValues(alpha: 0.10);
-      fg = scheme.onSurface;
-    }
-    return SizedBox(
-      width: LensGridView.cellWidth,
-      height: LensGridView.rowHeight,
-      child: Padding(
-        padding: const EdgeInsets.all(1),
-        child: Material(
-          color: fill,
-          borderRadius: BorderRadius.circular(4),
-          child: InkWell(
-            key: Key('lens-cell-${power.key}'),
-            borderRadius: BorderRadius.circular(4),
-            onTap: () => onTap(power, i),
-            child: Center(
-              child: Text(
-                i == null ? '' : '${i.stock}',
-                style: TextStyle(
-                  color: fg,
-                  fontWeight: i != null && i.isLowStock
-                      ? FontWeight.w700
-                      : FontWeight.w500,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

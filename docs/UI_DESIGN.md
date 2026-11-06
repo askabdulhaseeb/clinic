@@ -110,8 +110,9 @@ Sidebar order: Patients, Visits, Queue, Appointments, Reminders, Sales, Summary.
 | `/reception/appointments` | Appointments day view: date picker, one column per doctor, Arrived / Reschedule / Cancel / No-show | 6A |
 | `/reception/appointments/new?patientId=` | Book appointment | 6A |
 | `/reception/reminders` | Reminders due today with Send buttons | 6B |
-| `/reception/sales` | Today's sales, New sale | 7 |
-| `/reception/sales/new?patientId=&visitId=` | New sale with lens power picker | 7 |
+| `/reception/sales` | Today's sales, New sale | 7B |
+| `/reception/sales/new?patientId=&visitId=` | New sale with lens power picker (walk-in when no patient) | 7B |
+| `/reception/sales/:id` | Sale detail, receipt print | 7B |
 | `/reception/summary` | Shift summary | 4 |
 
 ### 3.3 Doctor (`/doctor`)
@@ -132,7 +133,7 @@ Bottom tabs: Queue, Patients, Operations, Me, plus More holding Appointments (de
 
 ### 3.4 Admin (`/admin`)
 
-Bottom tabs: Dashboard, Visits, Inventory, Finance, More. Sidebar on desktop: Dashboard, Visits, Patients, Appointments, Inventory, Finance, Reports, Users, Catalog, Settings, Audit log.
+Bottom tabs: Dashboard, Visits, Inventory, Finance, More. Sidebar on desktop: Dashboard, Visits, Patients, Appointments, Sales, Inventory, Finance, Reports, Users, Catalog, Settings, Audit log.
 
 | Path | Screen | Phase |
 |---|---|---|
@@ -141,6 +142,7 @@ Bottom tabs: Dashboard, Visits, Inventory, Finance, More. Sidebar on desktop: Da
 | `/admin/visits` | Search any visit; edit or soft delete with reason | 8 |
 | `/admin/patients`, `/admin/patients/new`, `/admin/patients/:id`, `/admin/patients/:id/edit` | Same screens as Reception, re-used (Patients sits under More on phones) | 3 |
 | `/admin/appointments`, `/admin/appointments/new?patientId=` | Same screens as Reception (Appointments sits under More on phones) | 6A |
+| `/admin/sales`, `/admin/sales/new?patientId=&visitId=`, `/admin/sales/:id` | Same screens as Reception plus Void on the sale detail (Sales sits under More on phones; decided 6 Nov 2026) | 7B |
 | `/admin/inventory` | redirects to `/admin/inventory/medicine` | 7A |
 | `/admin/inventory/medicine`, `/frame`, `/consumable` | Items of one category: search, low-stock and show-inactive filters, New item | 7A |
 | `/admin/inventory/lens` | Lens grid per lens type | 7A |
@@ -293,6 +295,13 @@ Decided 5 Nov 2026. Header row: previous day (`appt-date-prev`), the date (`appt
 
 ### 4.13 Book appointment (Reception, Admin)
 `/<role>/appointments/new?patientId=`: patient header card, then Department (segmented, `book-dept-<id>`), Doctor (`book-doctor`, auto-picked when the department has one active doctor; the patient's last doctor preselected), Date (`book-date`, calendar from today, defaults to tomorrow), Time (`book-time`, free text such as "10:30", optional), Notes (`book-notes`, optional), Book (`book-save`). On success a snackbar "Appointment booked" and the patient page opens. Entry points: `patient-book-<id>` on search rows (Phase 3's disabled Book), `patient-book-appointment` on the patient page Appointments tab.
+
+### 4.16 Sales (Reception, Admin)
+Decided 6 Nov 2026 (Phase 7B). **Sales list** (`/<role>/sales`): today's sales from one listener while the page is open, a header line with the count and the day's total (`sales-total`), rows `sale-row-<id>` (time, customer name, line count, total, payment chip, a "Voided" chip when deleted) that open the detail, FAB `new-sale` (walk-in sale). Entry points with a patient: `patient-sell-<id>` on the patient search row, `patient-sell` on the patient page, `visit-sell` on the visit detail (links the sale to the visit).
+
+**New sale** (`/<role>/sales/new?patientId=&visitId=`): patient header card when a patient is given, otherwise a customer name field `sale-customer`; a visit chip when linked. Item picker `sale-item-search` (autocomplete over active non-lens items by name or brand) appends a line; `sale-add-lens` opens the lens picker sheet: lens type segmented buttons (`lens-type-<key>`), the Add right (`sale-lens-right`) and Add left (`sale-lens-left`) buttons showing the power suggested from the patient's latest eye prescription (hidden when none), and the lens grid (`lens-cell-<lensKey>`, suggested cells highlighted, grey cells disabled). Lines: name with power, `sale-qty-<n>`, `sale-price-<n>` (prefilled with the sale price, editable), `sale-remove-<n>`, and a short-stock warning `sale-short-<n>` ("Only 2 in stock" or "Out of stock") that does not block. Below: subtotal, `sale-discount`, `sale-discount-reason` (required when the discount is above 0), `sale-payment` (segmented), `sale-payment-ref` for non-cash, `sale-total`, Save FAB `sale-save`. On success a snackbar "Sale saved" and the sale detail opens.
+
+**Sale detail** (`/<role>/sales/:id`): `PageHeader`, customer block (name, patient number and phone when known, visit token when linked), items table, amounts (subtotal, discount with reason, total, payment), a receipt card with the copies stepper and Print (`sale-print`), and for Admin a Void button (`sale-void`) opening a dialog with `sale-void-reason` and `sale-void-confirm`; a voided sale shows a red banner with the reason and no actions. The sale receipt (A4, `SaleReceiptPdf`) reuses the visit receipt layout without the token box; the visit receipt adds an "Items sold" table and a grand total line when the visit has a sale (visit detail shows the same card with `visit-sale-<saleId>` opening the sale).
 
 ### 4.14 Patient page Appointments tab (Reception, Admin)
 Rows `patient-appt-row-<id>`: date, time, doctor, source chip, status chip; booked ones soonest first, then the rest newest first. Book button at the top (`patient-book-appointment`). Row actions live on the day view (6A); "Change post-op days" on post-op rows arrives in 6B.

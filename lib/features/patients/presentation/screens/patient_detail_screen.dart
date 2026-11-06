@@ -162,6 +162,15 @@ class PatientDetailView extends StatelessWidget {
                 label: const Text('Edit'),
               ),
               const SizedBox(width: 8),
+              FilledButton.tonalIcon(
+                key: const Key('patient-sell'),
+                onPressed: () => context.go(
+                  AppRoutes.saleNewFor(role, patientId: patient.id),
+                ),
+                icon: const Icon(Icons.add_shopping_cart_outlined, size: 18),
+                label: const Text('Sell'),
+              ),
+              const SizedBox(width: 8),
               FilledButton.icon(
                 key: const Key('patient-new-visit'),
                 onPressed: () => context.go(

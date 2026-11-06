@@ -144,6 +144,14 @@ abstract final class ShellDestinations {
       path: AppRoutes.adminAppointments,
       primary: false,
     ),
+    // Phase 7B: sidebar on desktop, under More in the phone bottom bar.
+    ShellDestination(
+      label: 'Sales',
+      icon: Icons.shopping_bag_outlined,
+      selectedIcon: Icons.shopping_bag,
+      path: AppRoutes.adminSales,
+      primary: false,
+    ),
     ShellDestination(
       label: 'Inventory',
       icon: Icons.inventory_2_outlined,

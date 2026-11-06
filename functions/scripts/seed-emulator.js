@@ -7,7 +7,8 @@
 // Seeded: four accounts (admin, first-login reception, plain reception,
 // multi-role), the Eye and Homeopathy departments with their visit types,
 // one doctor record linked to the multi-role account, and one family with
-// two patients (Phase 3). `settings/general` is deliberately NOT seeded so
+// two patients (Phase 3), and three stocked inventory items for the sales
+// flow (Phase 7B). `settings/general` is deliberately NOT seeded so
 // the integration test can exercise the first-run setup screen; the admin
 // setup flow creates it.
 process.env.FIREBASE_AUTH_EMULATOR_HOST ??= "127.0.0.1:9099";
@@ -259,10 +260,84 @@ async function seedPatients() {
   console.log("seeded family Khan with Ali Khan and Sara Khan");
 }
 
+// Phase 7B: a consumable, a frame and one single-vision lens power so the
+// reception sales flow has stock to sell. Medicines stay empty and the
+// -1.25 / -0.50 power stays unstocked because admin_inventory_flow_test
+// creates those. IDs and the lens key follow FIREBASE_ARCHITECTURE §4.15.
+const ITEMS = [
+  {
+    id: "seed-item-drops",
+    category: "consumable",
+    name: "Eye Drops",
+    brand: "Alcon",
+    unit: "bottle",
+    purchasePrice: 100,
+    salePrice: 150,
+    stock: 10,
+    lowStockThreshold: 3,
+    searchKeys: ["e", "ey", "eye", "d", "dr", "dro", "drop", "drops", "a", "al", "alc", "alco", "alcon"],
+  },
+  {
+    id: "seed-item-frame",
+    category: "frame",
+    name: "Classic Frame",
+    brand: "Ray",
+    unit: "pc",
+    purchasePrice: 1200,
+    salePrice: 2000,
+    stock: 2,
+    lowStockThreshold: 1,
+    searchKeys: ["c", "cl", "cla", "clas", "class", "classi", "f", "fr", "fra", "r", "ra", "ray"],
+  },
+  {
+    id: "singleVision|-2.00|-0.75",
+    category: "lens",
+    name: "Single vision -2.00 / -0.75",
+    brand: "Essilor",
+    unit: "pc",
+    purchasePrice: 400,
+    salePrice: 900,
+    stock: 4,
+    lowStockThreshold: 2,
+    searchKeys: ["s", "si", "sin", "sing", "singl", "single"],
+    lens: { type: "singleVision", sph: -2, cyl: -0.75 },
+    lensKey: "singleVision|-2.00|-0.75",
+  },
+];
+
+async function seedInventory() {
+  const batch = db.batch();
+  for (const i of ITEMS) {
+    batch.set(
+      db.collection("inventoryItems").doc(i.id),
+      {
+        category: i.category,
+        name: i.name,
+        brand: i.brand,
+        unit: i.unit,
+        purchasePrice: i.purchasePrice,
+        salePrice: i.salePrice,
+        stock: i.stock,
+        lowStockThreshold: i.lowStockThreshold,
+        searchKeys: i.searchKeys,
+        lens: i.lens ?? null,
+        lensKey: i.lensKey ?? null,
+        active: true,
+        branchId: "main",
+        ...STAMP("seed"),
+      },
+      { merge: true }
+    );
+  }
+  await batch.commit();
+  console.log("seeded 3 inventory items");
+}
+
 (async () => {
   for (const u of SEED) await upsert(u);
   await seedCatalog();
   await seedPatients();
+  await seedInventory();
   console.log("done");
   process.exit(0);
 })().catch((e) => {

@@ -335,10 +335,10 @@ describe("master data write", () => {
 
 describe("other collections", () => {
   it("denied even for admin", async () => {
-    // `sales` opens in Phase 7B, `payouts` in Phase 8.
-    await assertFails(asAdmin().doc("sales/s1").get());
-    await assertFails(asAdmin().doc("sales/s1").set({ total: 1 }));
-    await assertFails(asAlice().collection("payouts").get());
+    // `payouts` and `dailySummaries` open in Phase 8.
+    await assertFails(asAdmin().doc("payouts/p1").get());
+    await assertFails(asAdmin().doc("payouts/p1").set({ total: 1 }));
+    await assertFails(asAlice().collection("dailySummaries").get());
     await assertFails(asAnon().doc("settings/general").get());
   });
 });
@@ -1293,5 +1293,90 @@ describe("expenses", () => {
   });
   it("nobody deletes", async () => {
     await assertFails(asAdmin().doc("expenses/e1").delete());
+  });
+});
+
+// ----- Phase 7B: sales (§4.19) ----------------------------------------------
+
+function sale(uid: string, extra: Record<string, unknown> = {}) {
+  return {
+    patientId: "p1",
+    patientName: "Ali Khan",
+    patientNo: "E-26-000001",
+    phone: "03001234567",
+    visitId: null,
+    date: "2026-11-06",
+    items: [
+      { itemId: "i1", name: "Arnica 30", category: "medicine", qty: 2, unitPrice: 150, lineTotal: 300, lensKey: null },
+    ],
+    subtotal: 300,
+    discountAmount: 0,
+    discountReason: "",
+    total: 300,
+    paymentMethod: "cash",
+    paymentRef: "",
+    deleted: false,
+    deleteReason: "",
+    createdBy: uid,
+    createdAt: new Date(),
+    createdAtLocal: new Date(),
+    updatedAt: new Date(),
+    updatedBy: uid,
+    branchId: "main",
+    ...extra,
+  };
+}
+
+describe("sales", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("sales/s1").set(sale(ALICE));
+    });
+  });
+  it("any signed-in user reads", async () => {
+    await assertSucceeds(asAlice().doc("sales/s1").get());
+    await assertSucceeds(asDoctor().collection("sales").where("date", "==", "2026-11-06").get());
+    await assertFails(asAnon().doc("sales/s1").get());
+  });
+  it("reception and admin create with a valid shape and createdBy = self", async () => {
+    await assertSucceeds(asAlice().doc("sales/s2").set(sale(ALICE)));
+    await assertSucceeds(asAdmin().doc("sales/s3").set(sale(ADMIN)));
+    await assertSucceeds(asAlice().doc("sales/s4").set(sale(ALICE, { patientId: null, patientNo: "", phone: "", patientName: "Walk-in" })));
+    await assertSucceeds(asAlice().doc("sales/s5").set(sale(ALICE, { visitId: "v1", discountAmount: 50, discountReason: "Staff", total: 250 })));
+    await assertFails(asDoctor().doc("sales/s6").set(sale("doctor-uid")));
+    await assertFails(asAlice().doc("sales/s6").set(sale(ADMIN)));
+  });
+  it("rejects a bad shape", async () => {
+    const bad = (extra: Record<string, unknown>) => assertFails(asAlice().doc("sales/s9").set(sale(ALICE, extra)));
+    await bad({ patientName: "" });
+    await bad({ date: "" });
+    await bad({ items: [] });
+    await bad({ subtotal: -1 });
+    await bad({ total: 299 });
+    await bad({ discountAmount: 50, discountReason: "", total: 250 });
+    await bad({ discountAmount: 50, discountReason: "Staff", total: 300 });
+    await bad({ paymentMethod: "gold" });
+    await bad({ deleted: true });
+    await bad({ branchId: "other" });
+  });
+  it("admin voids with a reason; nothing else changes", async () => {
+    const voided = {
+      deleted: true,
+      deletedAt: new Date(),
+      deletedBy: ADMIN,
+      deleteReason: "Wrong patient",
+      updatedAt: new Date(),
+      updatedBy: ADMIN,
+    };
+    await assertFails(asAlice().doc("sales/s1").update({ ...voided, deletedBy: ALICE, updatedBy: ALICE }));
+    await assertFails(asAdmin().doc("sales/s1").update({ ...voided, deleteReason: "" }));
+    await assertFails(asAdmin().doc("sales/s1").update({ ...voided, total: 1 }));
+    await assertFails(asAdmin().doc("sales/s1").update({ ...voided, updatedBy: ALICE }));
+    await assertFails(asAdmin().doc("sales/s1").update({ total: 1, updatedAt: new Date(), updatedBy: ADMIN }));
+    await assertSucceeds(asAdmin().doc("sales/s1").update(voided));
+  });
+  it("nobody deletes", async () => {
+    await assertFails(asAdmin().doc("sales/s1").delete());
+    await assertFails(asAlice().doc("sales/s1").delete());
   });
 });

@@ -57,6 +57,7 @@ abstract final class AppRoutes {
   static const String adminPatientPattern = '/admin/patients/:id';
   static const String adminPatientEditPattern = '/admin/patients/:id/edit';
   static const String adminVisits = '/admin/visits';
+  static const String adminSales = '/admin/sales';
   // Admin may create visits too (FEATURES §3); the list itself is Phase 8.
   static const String adminVisitNew = '/admin/visits/new';
   static const String adminVisitPattern = '/admin/visits/:id';
@@ -182,6 +183,25 @@ abstract final class AppRoutes {
       ).toString();
 
   static String visitFor(UserRole role, String id) => '${visitsFor(role)}/$id';
+
+  /// Sales (Phase 7B) are mounted under both roles; `new` takes an
+  /// optional patient and visit (walk-in when neither is given).
+  static String salesFor(UserRole role) => '${rootFor(role)}/sales';
+
+  static String saleNewFor(
+    UserRole role, {
+    String? patientId,
+    String? visitId,
+  }) {
+    final path = '${salesFor(role)}/new';
+    if (patientId == null && visitId == null) return path;
+    return Uri(
+      path: path,
+      queryParameters: {'patientId': ?patientId, 'visitId': ?visitId},
+    ).toString();
+  }
+
+  static String saleFor(UserRole role, String id) => '${salesFor(role)}/$id';
 
   static String adminCatalogVisitType(String id) =>
       '$adminCatalogVisitTypes/$id';

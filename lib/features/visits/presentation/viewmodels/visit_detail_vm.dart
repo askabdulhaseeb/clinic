@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../../../core/errors/app_exception.dart';
+import '../../../sales/domain/entities/sale.dart';
+import '../../../sales/domain/repositories/sales_repository.dart';
 import '../../../settings/domain/entities/clinic_settings.dart';
 import '../../domain/entities/visit.dart';
 import '../../domain/repositories/visits_repository.dart';
@@ -10,13 +12,17 @@ import '../receipt/print_receipt.dart';
 import '../receipt/receipt_printer.dart';
 
 /// One saved visit: receipt preview, copy count and reprint
-/// (UI_DESIGN §4.3 "Visit detail").
+/// (UI_DESIGN §4.3 "Visit detail"). With a [SalesRepository] it also looks
+/// up the sale linked to the visit (one read) so the receipt lists the
+/// items sold (Phase 7B).
 class VisitDetailViewModel extends ChangeNotifier {
   VisitDetailViewModel({
     required VisitsRepository repository,
     required this.visitId,
     required int defaultCopies,
+    SalesRepository? salesRepository,
   }) : _repo = repository,
+       _sales = salesRepository,
        _copies = defaultCopies.clamp(
          ClinicSettings.minReceiptCopies,
          ClinicSettings.maxReceiptCopies,
@@ -25,7 +31,10 @@ class VisitDetailViewModel extends ChangeNotifier {
   }
 
   final VisitsRepository _repo;
+  final SalesRepository? _sales;
   final String visitId;
+  Sale? _sale;
+  bool _saleLoaded = false;
   StreamSubscription<Visit?>? _sub;
   Visit? _visit;
   bool _loading = true;
@@ -37,6 +46,9 @@ class VisitDetailViewModel extends ChangeNotifier {
   String? _actionError;
 
   Visit? get visit => _visit;
+
+  /// The live sale linked to this visit, once looked up; null when none.
+  Sale? get sale => _sale;
   bool get loading => _loading;
   bool get notFound => !_loading && _visit == null && _loadError == null;
   bool get printing => _printing;
@@ -72,6 +84,7 @@ class VisitDetailViewModel extends ChangeNotifier {
       settings: settings,
       copies: _copies,
       printer: printer,
+      sale: _sale,
     );
     _printing = false;
     if (!_disposed) notifyListeners();
@@ -83,6 +96,24 @@ class VisitDetailViewModel extends ChangeNotifier {
     // The visit remembers the copies it was saved with (FEATURES §5.7).
     if (v != null && !_copiesTouched) _copies = v.receiptCopies;
     notifyListeners();
+    if (v != null && !_saleLoaded) {
+      _saleLoaded = true;
+      unawaited(_loadSale());
+    }
+  }
+
+  /// Called again after a sale is made from this page.
+  Future<void> reloadSale() => _loadSale();
+
+  Future<void> _loadSale() async {
+    final repo = _sales;
+    if (repo == null) return;
+    try {
+      _sale = await repo.saleForVisit(visitId);
+    } on AppException catch (_) {
+      // The receipt still prints without the items.
+    }
+    if (!_disposed) notifyListeners();
   }
 
   void _onError(Object e) {

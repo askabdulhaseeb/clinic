@@ -26,6 +26,9 @@ import '../../features/patients/presentation/screens/patient_form_screen.dart';
 import '../../features/patients/presentation/screens/patient_history_screen.dart';
 import '../../features/patients/presentation/screens/patient_search_screen.dart';
 import '../../features/prescriptions/presentation/screens/consultation_screen.dart';
+import '../../features/sales/presentation/screens/new_sale_screen.dart';
+import '../../features/sales/presentation/screens/sale_detail_screen.dart';
+import '../../features/sales/presentation/screens/sales_screen.dart';
 import '../../features/settings/presentation/screens/initial_setup_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/settings/presentation/viewmodels/settings_controller.dart';
@@ -164,6 +167,7 @@ ShellRoute _roleShell(UserRole role) {
         ..._patientRoutes(role),
         ..._visitRoutes(role),
         ..._appointmentRoutes(role),
+        ..._salesRoutes(role),
       ],
       if (role == UserRole.doctor) ..._doctorRoutes(),
     ],
@@ -216,6 +220,27 @@ List<GoRoute> _visitRoutes(UserRole role) {
       path: '$base/:id',
       builder: (_, state) =>
           VisitDetailScreen(role: role, visitId: state.pathParameters['id']!),
+    ),
+  ];
+}
+
+/// Sales under `/<role>/sales` (Phase 7B), shared by Reception and Admin;
+/// the list itself is a sidebar destination. `new` before `:id`.
+List<GoRoute> _salesRoutes(UserRole role) {
+  final base = AppRoutes.salesFor(role);
+  return [
+    GoRoute(
+      path: '$base/new',
+      builder: (_, state) => NewSaleScreen(
+        role: role,
+        patientId: state.uri.queryParameters['patientId'],
+        visitId: state.uri.queryParameters['visitId'],
+      ),
+    ),
+    GoRoute(
+      path: '$base/:id',
+      builder: (_, state) =>
+          SaleDetailScreen(role: role, saleId: state.pathParameters['id']!),
     ),
   ];
 }
@@ -353,6 +378,10 @@ Widget _screenFor(String path, String label) {
       return const QueueScreen(role: UserRole.reception);
     case AppRoutes.receptionSummary:
       return const SummaryScreen();
+    case AppRoutes.receptionSales:
+      return const SalesScreen(role: UserRole.reception);
+    case AppRoutes.adminSales:
+      return const SalesScreen(role: UserRole.admin);
     case AppRoutes.receptionAppointments:
       return const AppointmentsScreen(role: UserRole.reception);
     case AppRoutes.adminAppointments:
