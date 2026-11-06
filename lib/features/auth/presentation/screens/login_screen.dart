@@ -1,8 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../domain/repositories/dev_tools_repository.dart';
 import '../viewmodels/login_vm.dart';
 import '../viewmodels/session_controller.dart';
 import '../widgets/auth_card.dart';
@@ -14,11 +12,8 @@ class LoginScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (context) => LoginViewModel(
-        session: context.read<SessionController>(),
-        // Debug builds only; main.dart provides it under the same guard.
-        devTools: kDebugMode ? context.read<DevToolsRepository?>() : null,
-      ),
+      create: (context) =>
+          LoginViewModel(session: context.read<SessionController>()),
       child: const _LoginForm(),
     );
   }
@@ -51,14 +46,6 @@ class _LoginFormState extends State<_LoginForm> {
       password: _password.text,
     );
     // Navigation happens through the router redirect once the session changes.
-  }
-
-  Future<void> _createTestAdmin() async {
-    final credentials = await context.read<LoginViewModel>().createTestAdmin();
-    if (credentials == null || !mounted) return;
-    _email.text = credentials.email;
-    _password.text = credentials.password;
-    await _submit();
   }
 
   @override
@@ -126,15 +113,6 @@ class _LoginFormState extends State<_LoginForm> {
                       )
                     : const Text('Sign in'),
               ),
-              if (vm.canCreateTestAdmin) ...[
-                const SizedBox(height: 8),
-                TextButton.icon(
-                  key: const Key('create-test-admin'),
-                  onPressed: vm.submitting ? null : _createTestAdmin,
-                  icon: const Icon(Icons.construction_outlined, size: 18),
-                  label: const Text('Create test admin (dev)'),
-                ),
-              ],
             ],
           ),
         ),

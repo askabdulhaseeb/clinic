@@ -193,5 +193,13 @@ abstract final class ShellDestinations {
       path: AppRoutes.adminSettings,
       primary: false,
     ),
+    // Phase 9.
+    ShellDestination(
+      label: 'Audit log',
+      icon: Icons.history_outlined,
+      selectedIcon: Icons.history,
+      path: AppRoutes.adminAudit,
+      primary: false,
+    ),
   ];
 }

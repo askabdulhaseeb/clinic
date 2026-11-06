@@ -97,23 +97,6 @@ void main() {
     await signOut(tester);
   }, timeout: testTimeout);
 
-  testWidgets('dev button creates the test admin and signs in', (tester) async {
-    await app.main();
-    await ensureSignedOut(tester);
-    // Debug builds only; the Functions emulator reads ALLOW_TEST_ADMIN from
-    // functions/.env.
-    await tester.tap(find.byKey(const Key('create-test-admin')));
-    await waitFor(
-      tester,
-      find.byKey(const Key('dash-kpi-revenue')),
-      timeout: const Duration(seconds: 40),
-    );
-    await tester.tap(find.byKey(const Key('user-menu')));
-    await waitFor(tester, find.text('admin@mytester.com'));
-    await tester.tap(find.text('Sign out'));
-    await waitFor(tester, find.text('Sign in'));
-  }, timeout: testTimeout);
-
   testWidgets('multi-role user can switch role', (tester) async {
     await app.main();
     await signIn(tester, 'multi@clinic.test', 'Multi12345');

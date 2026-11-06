@@ -13,6 +13,7 @@ rules_version = '2';
 // Phase 7: `inventoryItems`, `stockMovements`, `suppliers`, `purchases`, `expenses`, `sales`.
 // Phase 8A: `expenses` corrections, `dailySummaries` (Admin read), `summaryEvents` (closed).
 // Phase 8B: `visits` corrections need an editReason, `payouts`.
+// Phase 9: `auditLogs` (Admin read).
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -626,6 +627,13 @@ service cloud.firestore {
 
     match /summaryEvents/{eventId} {
       allow read, write: if false;
+    }
+
+    // ----- auditLogs/{logId}  (§4.24): Phase 9 ----------------------------
+    // Written only by the audit triggers; Admin reads the viewer.
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     // ----- sales/{saleId}  (§4.19): Phase 7B ------------------------------

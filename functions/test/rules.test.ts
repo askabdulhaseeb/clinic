@@ -335,9 +335,8 @@ describe("master data write", () => {
 
 describe("other collections", () => {
   it("denied even for admin", async () => {
-    // `auditLogs` opens (read) in Phase 9.
-    await assertFails(asAdmin().doc("auditLogs/a1").get());
-    await assertFails(asAdmin().doc("auditLogs/a1").set({ action: "x" }));
+    await assertFails(asAdmin().doc("somethingElse/x1").get());
+    await assertFails(asAdmin().doc("somethingElse/x1").set({ action: "x" }));
     await assertFails(asAnon().doc("settings/general").get());
   });
 });
@@ -1485,6 +1484,24 @@ describe("payouts (Phase 8B)", () => {
   });
   it("nobody deletes", async () => {
     await assertFails(asAdmin().doc("payouts/p1").delete());
+  });
+});
+
+describe("auditLogs (Phase 9)", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("auditLogs/a1").set({ collection: "visits", action: "update", date: "2026-11-06" });
+    });
+  });
+  it("admin reads and queries by day; nobody else reads; nobody writes", async () => {
+    await assertSucceeds(asAdmin().doc("auditLogs/a1").get());
+    await assertSucceeds(asAdmin().collection("auditLogs").where("date", "==", "2026-11-06").get());
+    await assertFails(asAlice().doc("auditLogs/a1").get());
+    await assertFails(asDoctor().collection("auditLogs").get());
+    await assertFails(asAnon().doc("auditLogs/a1").get());
+    await assertFails(asAdmin().doc("auditLogs/a2").set({ action: "update" }));
+    await assertFails(asAdmin().doc("auditLogs/a1").update({ reason: "x" }));
+    await assertFails(asAdmin().doc("auditLogs/a1").delete());
   });
 });
 

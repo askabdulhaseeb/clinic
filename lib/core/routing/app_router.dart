@@ -8,6 +8,7 @@ import '../../features/appointments/presentation/screens/appointments_screen.dar
 import '../../features/appointments/presentation/screens/book_appointment_screen.dart';
 import '../../features/appointments/presentation/screens/doctor_appointments_screen.dart';
 import '../../features/appointments/presentation/screens/reminders_screen.dart';
+import '../../features/audit/presentation/screens/audit_log_screen.dart';
 import '../../features/auth/domain/entities/user_role.dart';
 import '../../features/auth/presentation/screens/change_password_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
@@ -422,6 +423,8 @@ Widget _screenFor(String path, String label) {
       return const AdminVisitsScreen();
     case AppRoutes.adminReports:
       return const ReportsScreen();
+    case AppRoutes.adminAudit:
+      return const AuditLogScreen();
     case AppRoutes.receptionQueue:
       return const QueueScreen(role: UserRole.reception);
     case AppRoutes.receptionSummary:

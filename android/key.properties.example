@@ -1,0 +1,5 @@
+# Copy to android/key.properties (git-ignored) and fill in; see DEVELOPMENT_PLAN §6 Phase 9.
+storeFile=../keystore/upload.jks
+storePassword=CHANGE_ME
+keyAlias=upload
+keyPassword=CHANGE_ME

@@ -65,53 +65,6 @@ void main() {
     });
   });
 
-  group('LoginScreen dev test admin button', () {
-    testWidgets('is absent without the dev tools repository', (tester) async {
-      await tester.pumpWidget(
-        wrapWithProviders(child: const LoginScreen(), session: session),
-      );
-      expect(find.byKey(const Key('create-test-admin')), findsNothing);
-    });
-
-    testWidgets('creates the test admin, fills the form and signs in', (
-      tester,
-    ) async {
-      final devTools = FakeDevToolsRepository();
-      await tester.pumpWidget(
-        wrapWithProviders(
-          child: const LoginScreen(),
-          session: session,
-          devTools: devTools,
-        ),
-      );
-      await tester.tap(find.byKey(const Key('create-test-admin')));
-      await tester.pumpAndSettle();
-      expect(devTools.calls, 1);
-      expect(find.text('admin@mytester.com'), findsOneWidget);
-      expect(repo.signInCalls.single.email, 'admin@mytester.com');
-      expect(repo.signInCalls.single.password, '1234567890');
-    });
-
-    testWidgets('shows the server error and does not sign in', (tester) async {
-      final devTools = FakeDevToolsRepository()
-        ..error = const AppException(
-          'The test admin is switched off.',
-          code: 'failed-precondition',
-        );
-      await tester.pumpWidget(
-        wrapWithProviders(
-          child: const LoginScreen(),
-          session: session,
-          devTools: devTools,
-        ),
-      );
-      await tester.tap(find.byKey(const Key('create-test-admin')));
-      await tester.pumpAndSettle();
-      expect(find.text('The test admin is switched off.'), findsOneWidget);
-      expect(repo.signInCalls, isEmpty);
-    });
-  });
-
   group('ChangePasswordScreen', () {
     testWidgets('validates length, match and difference', (tester) async {
       await tester.pumpWidget(

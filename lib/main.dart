@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -16,10 +15,10 @@ import 'features/analytics/data/repositories/summaries_repository_impl.dart';
 import 'features/analytics/domain/repositories/summaries_repository.dart';
 import 'features/appointments/data/repositories/appointments_repository_impl.dart';
 import 'features/appointments/domain/repositories/appointments_repository.dart';
+import 'features/audit/data/repositories/audit_logs_repository_impl.dart';
+import 'features/audit/domain/repositories/audit_logs_repository.dart';
 import 'features/auth/data/repositories/auth_repository_impl.dart';
-import 'features/auth/data/repositories/dev_tools_repository_impl.dart';
 import 'features/auth/domain/repositories/auth_repository.dart';
-import 'features/auth/domain/repositories/dev_tools_repository.dart';
 import 'features/auth/presentation/viewmodels/session_controller.dart';
 import 'features/catalog/data/repositories/catalog_repository_impl.dart';
 import 'features/catalog/domain/repositories/catalog_repository.dart';
@@ -71,11 +70,6 @@ Future<void> main() async {
             functions: functions,
           ),
         ),
-        // Dev helper: the login screen's "Create test admin" button.
-        if (kDebugMode)
-          Provider<DevToolsRepository>(
-            create: (_) => DevToolsRepositoryImpl(functions: functions),
-          ),
         Provider<CatalogRepository>(
           create: (_) =>
               CatalogRepositoryImpl(firestore: firestore, auth: auth),
@@ -127,6 +121,9 @@ Future<void> main() async {
         Provider<PayoutsRepository>(
           create: (_) =>
               PayoutsRepositoryImpl(firestore: firestore, auth: auth),
+        ),
+        Provider<AuditLogsRepository>(
+          create: (_) => AuditLogsRepositoryImpl(firestore: firestore),
         ),
         // CSV exports from the Admin reports page (Phase 8B).
         Provider<FileSaver>(create: (_) => const PackageFileSaver()),

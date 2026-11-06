@@ -187,12 +187,15 @@ class _CompactShell extends StatelessWidget {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      // Scrollable: Admin has eight secondary destinations (Phase 9), more
+      // than a small phone shows at once.
       builder: (sheet) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: ListView(
+          shrinkWrap: true,
           children: [
             for (final d in more)
               ListTile(
+                key: Key('more-${d.path}'),
                 leading: Icon(d.icon),
                 title: Text(d.label),
                 selected: d.matches(location),

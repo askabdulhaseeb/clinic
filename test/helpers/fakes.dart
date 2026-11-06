@@ -15,10 +15,11 @@ import 'package:ramzan/features/analytics/domain/entities/daily_summary.dart';
 import 'package:ramzan/features/analytics/domain/repositories/summaries_repository.dart';
 import 'package:ramzan/features/appointments/domain/entities/appointment.dart';
 import 'package:ramzan/features/appointments/domain/repositories/appointments_repository.dart';
+import 'package:ramzan/features/audit/domain/entities/audit_entry.dart';
+import 'package:ramzan/features/audit/domain/repositories/audit_logs_repository.dart';
 import 'package:ramzan/features/auth/domain/entities/app_user.dart';
 import 'package:ramzan/features/auth/domain/entities/user_role.dart';
 import 'package:ramzan/features/auth/domain/repositories/auth_repository.dart';
-import 'package:ramzan/features/auth/domain/repositories/dev_tools_repository.dart';
 import 'package:ramzan/features/auth/presentation/viewmodels/session_controller.dart';
 import 'package:ramzan/features/catalog/domain/entities/department.dart';
 import 'package:ramzan/features/catalog/domain/entities/doctor.dart';
@@ -334,6 +335,37 @@ Purchase samplePurchase({
   expenseId: 'exp-1',
   createdBy: 'admin-1',
   createdAt: DateTime.utc(2026, 11, 6, 5),
+);
+
+class MockAuditLogsRepository extends Mock implements AuditLogsRepository {}
+
+/// Admin changed a visit's fee 1,500 → 1,000.
+AuditEntry sampleAuditEntry({
+  String id = 'ev-1',
+  AuditCollection collection = AuditCollection.visits,
+  AuditAction action = AuditAction.update,
+  String userId = 'admin-1',
+  String userName = 'Dr Admin',
+  String reason = 'Wrong fee typed',
+  String label = 'Ali Khan',
+  List<String> changedFields = const ['fee', 'netAmount'],
+  Map<String, Object?> before = const {'fee': 1500, 'netAmount': 1500},
+  Map<String, Object?> after = const {'fee': 1000, 'netAmount': 1000},
+  String date = '2026-11-06',
+}) => AuditEntry(
+  id: id,
+  collection: collection,
+  docId: 'v1',
+  action: action,
+  userId: userId,
+  userName: userName,
+  reason: reason,
+  label: label,
+  changedFields: changedFields,
+  before: before,
+  after: after,
+  date: date,
+  createdAt: DateTime.utc(2026, 11, 6, 6, 30),
 );
 
 class MockSalesRepository extends Mock implements SalesRepository {}
@@ -983,23 +1015,6 @@ class FakeSettingsRepository implements SettingsRepository {
   Future<void> dispose() => _controller.close();
 }
 
-/// Dev helper backend: records calls and returns fixed credentials.
-class FakeDevToolsRepository implements DevToolsRepository {
-  int calls = 0;
-  AppException? error;
-
-  @override
-  Future<TestAdminCredentials> createTestAdmin() async {
-    calls++;
-    final e = error;
-    if (e != null) throw e;
-    return const TestAdminCredentials(
-      email: 'admin@mytester.com',
-      password: '1234567890',
-    );
-  }
-}
-
 const adminUser = AppUser(
   uid: 'admin-1',
   email: 'admin@clinic.pk',
@@ -1067,7 +1082,7 @@ Widget wrapWithProviders({
   SummariesRepository? summariesRepository,
   ExpensesRepository? expensesRepository,
   PayoutsRepository? payoutsRepository,
-  DevToolsRepository? devTools,
+  AuditLogsRepository? auditLogsRepository,
   Size size = const Size(1280, 800),
 }) {
   return MultiProvider(
@@ -1109,7 +1124,8 @@ Widget wrapWithProviders({
         Provider<ExpensesRepository>.value(value: expensesRepository),
       if (payoutsRepository != null)
         Provider<PayoutsRepository>.value(value: payoutsRepository),
-      if (devTools != null) Provider<DevToolsRepository>.value(value: devTools),
+      if (auditLogsRepository != null)
+        Provider<AuditLogsRepository>.value(value: auditLogsRepository),
     ],
     child: MediaQuery(
       data: MediaQueryData(size: size),

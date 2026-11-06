@@ -129,6 +129,7 @@ abstract final class AppRoutes {
 
   static String adminPayout(String id) => '$adminFinancePayouts/$id';
   static const String adminReports = '/admin/reports';
+  static const String adminAudit = '/admin/audit';
   static const String adminCatalog = '/admin/catalog';
   static const String adminSettings = '/admin/settings';
 

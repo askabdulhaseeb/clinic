@@ -113,7 +113,10 @@ void main() {
       await tester.tap(find.byKey(const Key('payout-paid-confirm')));
       await waitFor(tester, find.byKey(const Key('payout-unmark-paid')));
       await waitForGone(tester, find.text('Payout marked paid'));
-      await tester.tap(find.byKey(const Key('fin-tab-expenses')));
+      // The payout page sits below the Finance tabs; Finance in the sidebar
+      // opens today's expenses.
+      await tester.tap(find.text('Finance').first);
+      await waitFor(tester, find.byKey(const Key('exp-total')));
       await waitFor(tester, find.textContaining('Payout: Dr Multi'));
       await openDashboard(tester);
       await waitForKpi(tester, 'expenses', expenses0 + 50000);
