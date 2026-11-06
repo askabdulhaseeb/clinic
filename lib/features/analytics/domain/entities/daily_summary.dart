@@ -42,6 +42,30 @@ class FeeBucket {
   String toString() => 'FeeBucket($visits, $gross, $discounts, $net)';
 }
 
+/// A discount bucket: how many and how much (FIREBASE_ARCHITECTURE §4.22
+/// `discountsByUser`, `discountsByReason`).
+class CountAmount {
+  const CountAmount({required this.count, required this.amount});
+
+  static const CountAmount zero = CountAmount(count: 0, amount: 0);
+
+  final int count;
+  final int amount;
+
+  CountAmount operator +(CountAmount o) =>
+      CountAmount(count: count + o.count, amount: amount + o.amount);
+
+  @override
+  bool operator ==(Object other) =>
+      other is CountAmount && other.count == count && other.amount == amount;
+
+  @override
+  int get hashCode => Object.hash(count, amount);
+
+  @override
+  String toString() => 'CountAmount($count, $amount)';
+}
+
 /// `dailySummaries/{YYYY-MM-DD}`: the totals of one clinic day, kept by the
 /// `applyDailySummaryDelta` function. The dashboard sums a range of them.
 class DailySummary {
@@ -56,6 +80,8 @@ class DailySummary {
     required this.byPayment,
     required this.byDepartment,
     required this.byDoctor,
+    this.discountsByUser = const {},
+    this.discountsByReason = const {},
     required this.salesTotal,
     required this.salesDiscounts,
     required this.salesByCategory,
@@ -106,6 +132,12 @@ class DailySummary {
   final Map<String, int> byPayment;
   final Map<String, FeeBucket> byDepartment;
   final Map<String, FeeBucket> byDoctor;
+
+  /// Visit discounts by the uid that gave them (Phase 8B reports).
+  final Map<String, CountAmount> discountsByUser;
+
+  /// Visit discounts by the stored reason text.
+  final Map<String, CountAmount> discountsByReason;
   final int salesTotal;
   final int salesDiscounts;
 
@@ -133,6 +165,8 @@ class DailySummary {
     byPayment: _addInts(byPayment, o.byPayment),
     byDepartment: _addBuckets(byDepartment, o.byDepartment),
     byDoctor: _addBuckets(byDoctor, o.byDoctor),
+    discountsByUser: _addCounts(discountsByUser, o.discountsByUser),
+    discountsByReason: _addCounts(discountsByReason, o.discountsByReason),
     salesTotal: salesTotal + o.salesTotal,
     salesDiscounts: salesDiscounts + o.salesDiscounts,
     salesByCategory: _addInts(salesByCategory, o.salesByCategory),
@@ -160,6 +194,17 @@ class DailySummary {
     return out;
   }
 
+  static Map<String, CountAmount> _addCounts(
+    Map<String, CountAmount> a,
+    Map<String, CountAmount> b,
+  ) {
+    final out = Map<String, CountAmount>.of(a);
+    for (final e in b.entries) {
+      out[e.key] = (out[e.key] ?? CountAmount.zero) + e.value;
+    }
+    return out;
+  }
+
   static bool _mapEq<V>(Map<String, V> a, Map<String, V> b) {
     if (a.length != b.length) return false;
     for (final e in a.entries) {
@@ -182,6 +227,8 @@ class DailySummary {
       _mapEq(other.byPayment, byPayment) &&
       _mapEq(other.byDepartment, byDepartment) &&
       _mapEq(other.byDoctor, byDoctor) &&
+      _mapEq(other.discountsByUser, discountsByUser) &&
+      _mapEq(other.discountsByReason, discountsByReason) &&
       other.salesTotal == salesTotal &&
       other.salesDiscounts == salesDiscounts &&
       _mapEq(other.salesByCategory, salesByCategory) &&

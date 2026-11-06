@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import 'app.dart';
 import 'core/firebase/firebase_bootstrap.dart';
+import 'core/storage/file_saver.dart';
 import 'core/storage/file_store.dart';
 import 'core/storage/image_shrinker.dart';
 import 'core/storage/key_value_store.dart';
@@ -23,7 +24,9 @@ import 'features/auth/presentation/viewmodels/session_controller.dart';
 import 'features/catalog/data/repositories/catalog_repository_impl.dart';
 import 'features/catalog/domain/repositories/catalog_repository.dart';
 import 'features/finance/data/repositories/expenses_repository_impl.dart';
+import 'features/finance/data/repositories/payouts_repository_impl.dart';
 import 'features/finance/domain/repositories/expenses_repository.dart';
+import 'features/finance/domain/repositories/payouts_repository.dart';
 import 'features/inventory/data/repositories/inventory_repository_impl.dart';
 import 'features/inventory/domain/repositories/inventory_repository.dart';
 import 'features/inventory/presentation/viewmodels/inventory_controller.dart';
@@ -121,6 +124,12 @@ Future<void> main() async {
           create: (_) =>
               ExpensesRepositoryImpl(firestore: firestore, auth: auth),
         ),
+        Provider<PayoutsRepository>(
+          create: (_) =>
+              PayoutsRepositoryImpl(firestore: firestore, auth: auth),
+        ),
+        // CSV exports from the Admin reports page (Phase 8B).
+        Provider<FileSaver>(create: (_) => const PackageFileSaver()),
         Provider<SettingsRepository>(
           create: (_) => SettingsRepositoryImpl(
             firestore: firestore,

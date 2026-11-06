@@ -76,6 +76,8 @@ class Visit {
     this.operationId,
     this.appointmentId,
     this.deleted = false,
+    this.deleteReason = '',
+    this.editReason = '',
     this.branchId = 'main',
   });
 
@@ -124,6 +126,12 @@ class Visit {
   /// The appointment this token was issued for (Phase 6A).
   final String? appointmentId;
   final bool deleted;
+
+  /// Why Admin soft-deleted the visit (Phase 8B); empty otherwise.
+  final String deleteReason;
+
+  /// The reason given for the latest Admin correction (Phase 8B).
+  final String editReason;
   final String branchId;
 
   bool get hasDiscount => discountAmount > 0;
@@ -134,6 +142,8 @@ class Visit {
     DateTime? completedAt,
     int? receiptCopies,
     bool? deleted,
+    String? deleteReason,
+    String? editReason,
   }) => Visit(
     id: id,
     patientId: patientId,
@@ -169,6 +179,8 @@ class Visit {
     operationId: operationId,
     appointmentId: appointmentId,
     deleted: deleted ?? this.deleted,
+    deleteReason: deleteReason ?? this.deleteReason,
+    editReason: editReason ?? this.editReason,
     branchId: branchId,
   );
 
@@ -209,6 +221,8 @@ class Visit {
       other.operationId == operationId &&
       other.appointmentId == appointmentId &&
       other.deleted == deleted &&
+      other.deleteReason == deleteReason &&
+      other.editReason == editReason &&
       other.branchId == branchId;
 
   @override

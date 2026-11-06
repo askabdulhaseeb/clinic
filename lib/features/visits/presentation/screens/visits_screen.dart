@@ -138,6 +138,9 @@ class VisitRow extends StatelessWidget {
         : ReceiptPdf.formatTime(
             visit.createdAt!.toUtc().add(const Duration(hours: 5)),
           );
+    final strike = visit.deleted
+        ? const TextStyle(decoration: TextDecoration.lineThrough)
+        : null;
     return ListTile(
       key: Key('visit-row-${visit.id}'),
       onTap: onTap,
@@ -145,7 +148,7 @@ class VisitRow extends StatelessWidget {
         label: visit.tokenLabel,
         departmentCode: visit.departmentCode,
       ),
-      title: Text(visit.patientName),
+      title: Text(visit.patientName, style: strike),
       subtitle: Text(
         [
           if (showDate) visit.date,
@@ -161,14 +164,23 @@ class VisitRow extends StatelessWidget {
         children: [
           MoneyText(
             visit.netAmount,
-            style: Theme.of(context).textTheme.titleSmall,
+            style: Theme.of(context).textTheme.titleSmall?.merge(strike),
           ),
           if (!compact) ...[
             const SizedBox(width: 12),
             SizedBox(width: 110, child: Text(visit.paymentMethod.label)),
           ],
           const SizedBox(width: 8),
-          StatusChip(status: visit.status),
+          // Admin's day view lists soft-deleted visits too (Phase 8B).
+          if (visit.deleted)
+            Chip(
+              label: const Text('Deleted'),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              backgroundColor: scheme.errorContainer,
+            )
+          else
+            StatusChip(status: visit.status),
         ],
       ),
     );

@@ -61,6 +61,8 @@ abstract final class AppRoutes {
   // Admin may create visits too (FEATURES §3); the list itself is Phase 8.
   static const String adminVisitNew = '/admin/visits/new';
   static const String adminVisitPattern = '/admin/visits/:id';
+  // Admin visit correction (Phase 8B).
+  static const String adminVisitEditPattern = '/admin/visits/:id/edit';
   // Admin re-uses the Reception appointment screens (Phase 6A).
   static const String adminAppointments = '/admin/appointments';
   static const String adminAppointmentNew = '/admin/appointments/new';
@@ -121,6 +123,12 @@ abstract final class AppRoutes {
       '/admin/finance/expenses/:id/edit';
 
   static String adminExpenseEdit(String id) => '$adminFinanceExpenses/$id/edit';
+  // Payouts (Phase 8B): `new` before `:id`.
+  static const String adminPayoutNew = '/admin/finance/payouts/new';
+  static const String adminPayoutPattern = '/admin/finance/payouts/:id';
+
+  static String adminPayout(String id) => '$adminFinancePayouts/$id';
+  static const String adminReports = '/admin/reports';
   static const String adminCatalog = '/admin/catalog';
   static const String adminSettings = '/admin/settings';
 
@@ -192,6 +200,9 @@ abstract final class AppRoutes {
       ).toString();
 
   static String visitFor(UserRole role, String id) => '${visitsFor(role)}/$id';
+
+  /// `/admin/visits/<id>/edit` (Phase 8B).
+  static String adminVisitEdit(String id) => '$adminVisits/$id/edit';
 
   /// Sales (Phase 7B) are mounted under both roles; `new` takes an
   /// optional patient and visit (walk-in when neither is given).

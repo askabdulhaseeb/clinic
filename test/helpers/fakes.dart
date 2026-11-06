@@ -25,7 +25,10 @@ import 'package:ramzan/features/catalog/domain/entities/doctor.dart';
 import 'package:ramzan/features/catalog/domain/entities/visit_type.dart';
 import 'package:ramzan/features/catalog/domain/repositories/catalog_repository.dart';
 import 'package:ramzan/features/finance/domain/entities/expense.dart';
+import 'package:ramzan/features/finance/domain/entities/payout.dart';
+import 'package:ramzan/features/finance/domain/payout_rules.dart';
 import 'package:ramzan/features/finance/domain/repositories/expenses_repository.dart';
+import 'package:ramzan/features/finance/domain/repositories/payouts_repository.dart';
 import 'package:ramzan/features/inventory/domain/entities/inventory_item.dart';
 import 'package:ramzan/features/inventory/domain/entities/lens_power.dart';
 import 'package:ramzan/features/inventory/domain/entities/purchase.dart';
@@ -339,8 +342,26 @@ class MockSummariesRepository extends Mock implements SummariesRepository {}
 
 class MockExpensesRepository extends Mock implements ExpensesRepository {}
 
+class MockPayoutsRepository extends Mock implements PayoutsRepository {}
+
 void registerFinanceFallbacks() {
   registerFallbackValue(SummaryRange.custom('2026-11-06', '2026-11-06'));
+  registerFallbackValue(
+    const PayoutInput(
+      doctor: doctorSara,
+      periodStart: '2026-10-01',
+      periodEnd: '2026-10-31',
+      figures: PayoutFigures(
+        salaryAmount: 0,
+        grossFees: 0,
+        discounts: 0,
+        netFees: 0,
+        shareBasis: ShareBasis.gross,
+        sharePercent: 0,
+        shareAmount: 0,
+      ),
+    ),
+  );
   registerFallbackValue(
     const ExpenseInput(
       category: ExpenseCategory.other,
@@ -375,12 +396,55 @@ Expense sampleExpense({
   createdAt: DateTime.utc(2026, 11, 6, 5),
 );
 
+/// October payout for Dr Sara: 80,000 salary + 10 % of 4,000 gross.
+Payout samplePayout({
+  String id = 'payout-1',
+  String doctorId = 'doctor-sara',
+  String doctorName = 'Dr Sara',
+  String periodStart = '2026-10-01',
+  String periodEnd = '2026-10-31',
+  int salaryAmount = 80000,
+  bool paid = false,
+  String? expenseId,
+  bool deleted = false,
+  String deleteReason = '',
+}) => Payout(
+  id: id,
+  doctorId: doctorId,
+  doctorName: doctorName,
+  periodStart: periodStart,
+  periodEnd: periodEnd,
+  salaryAmount: salaryAmount,
+  grossFees: 4000,
+  discounts: 400,
+  netFees: 3600,
+  shareBasis: ShareBasis.gross,
+  sharePercent: 10,
+  shareAmount: 400,
+  total: salaryAmount + 400,
+  paid: paid,
+  paidBy: paid ? 'admin-1' : null,
+  paidAt: paid ? DateTime.utc(2026, 11, 6, 5) : null,
+  expenseId: paid ? (expenseId ?? 'exp-payout-1') : expenseId,
+  note: '',
+  deleted: deleted,
+  deleteReason: deleteReason,
+  createdBy: 'admin-1',
+  createdAt: DateTime.utc(2026, 11, 6, 5),
+);
+
 /// One day: two eye visits by Dr Sara (one new patient), a frame sale and
 /// rent.
 DailySummary sampleSummary({
   String date = '2026-11-06',
   int visits = 2,
   int netFees = 1800,
+  Map<String, CountAmount> discountsByUser = const {
+    'rec-1': CountAmount(count: 1, amount: 200),
+  },
+  Map<String, CountAmount> discountsByReason = const {
+    'Old patient': CountAmount(count: 1, amount: 200),
+  },
 }) => DailySummary(
   date: date,
   visits: visits,
@@ -401,6 +465,8 @@ DailySummary sampleSummary({
       net: netFees,
     ),
   },
+  discountsByUser: discountsByUser,
+  discountsByReason: discountsByReason,
   salesTotal: 2000,
   salesDiscounts: 0,
   salesByCategory: const {'frame': 2000},
@@ -1000,6 +1066,7 @@ Widget wrapWithProviders({
   SalesRepository? salesRepository,
   SummariesRepository? summariesRepository,
   ExpensesRepository? expensesRepository,
+  PayoutsRepository? payoutsRepository,
   DevToolsRepository? devTools,
   Size size = const Size(1280, 800),
 }) {
@@ -1040,6 +1107,8 @@ Widget wrapWithProviders({
         Provider<SummariesRepository>.value(value: summariesRepository),
       if (expensesRepository != null)
         Provider<ExpensesRepository>.value(value: expensesRepository),
+      if (payoutsRepository != null)
+        Provider<PayoutsRepository>.value(value: payoutsRepository),
       if (devTools != null) Provider<DevToolsRepository>.value(value: devTools),
     ],
     child: MediaQuery(

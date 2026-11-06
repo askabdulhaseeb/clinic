@@ -1,4 +1,4 @@
-// Firestore rules allow/deny matrix for Phases 1 to 5B (FIREBASE_ARCHITECTURE.md §6).
+// Firestore rules allow/deny matrix for Phases 1 to 8B (FIREBASE_ARCHITECTURE.md §6).
 // Runs against the Firestore emulator on 127.0.0.1:8080.
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -335,9 +335,9 @@ describe("master data write", () => {
 
 describe("other collections", () => {
   it("denied even for admin", async () => {
-    // `payouts` opens in Phase 8B.
-    await assertFails(asAdmin().doc("payouts/p1").get());
-    await assertFails(asAdmin().doc("payouts/p1").set({ total: 1 }));
+    // `auditLogs` opens (read) in Phase 9.
+    await assertFails(asAdmin().doc("auditLogs/a1").get());
+    await assertFails(asAdmin().doc("auditLogs/a1").set({ action: "x" }));
     await assertFails(asAnon().doc("settings/general").get());
   });
 });
@@ -659,6 +659,38 @@ describe("visits update", () => {
     await assertFails(asAdmin().doc("visits/v1").update({ branchId: "b2", updatedBy: ADMIN }));
     await assertFails(
       asAdmin().doc("visits/v1").update({ discountAmount: 100, netAmount: 1400, updatedBy: ADMIN })
+    );
+  });
+  it("admin corrections need an editReason; the department is locked (Phase 8B)", async () => {
+    await assertFails(asAdmin().doc("visits/v1").update({ fee: 1000, netAmount: 1000, updatedBy: ADMIN }));
+    await assertFails(
+      asAdmin().doc("visits/v1").update({ paymentMethod: "bank", paymentRef: "TX", updatedBy: ADMIN })
+    );
+    await assertFails(
+      asAdmin().doc("visits/v1").update({ doctorId: "d2", doctorName: "Dr Two", updatedBy: ADMIN })
+    );
+    await assertFails(
+      asAdmin().doc("visits/v1").update({ fee: 1000, netAmount: 1000, editReason: "", updatedBy: ADMIN })
+    );
+    await assertSucceeds(
+      asAdmin().doc("visits/v1").update({
+        doctorId: "d2",
+        doctorName: "Dr Two",
+        paymentMethod: "bank",
+        paymentRef: "TX",
+        editReason: "Booked under the wrong doctor",
+        updatedBy: ADMIN,
+      })
+    );
+    await assertFails(
+      asAdmin().doc("visits/v1").update({ departmentId: "homeo", editReason: "x", updatedBy: ADMIN })
+    );
+    await assertFails(
+      asAdmin().doc("visits/v1").update({ departmentCode: "H", editReason: "x", updatedBy: ADMIN })
+    );
+    // Queue moves and receipt copies still need no reason.
+    await assertSucceeds(
+      asAdmin().doc("visits/v1").update({ status: "inProgress", startedAt: new Date(), updatedBy: ADMIN })
     );
   });
   it("nobody deletes", async () => {
@@ -1325,6 +1357,134 @@ describe("expenses", () => {
     await assertSucceeds(asAdmin().doc("expenses/m1").update(del));
     // Undelete is not a thing.
     await assertFails(asAdmin().doc("expenses/e1").update({ deleted: false, updatedAt: new Date(), updatedBy: ADMIN }));
+  });
+});
+
+// ----- Phase 8B: payouts (§4.21) -------------------------------------------
+function payout(uid: string, extra: Record<string, unknown> = {}) {
+  return {
+    doctorId: "d1",
+    doctorName: "Dr One",
+    periodStart: "2026-10-01",
+    periodEnd: "2026-10-31",
+    salaryAmount: 80000,
+    grossFees: 4000,
+    discounts: 400,
+    netFees: 3600,
+    shareBasis: "gross",
+    sharePercent: 10,
+    shareAmount: 400,
+    total: 80400,
+    paid: false,
+    paidAt: null,
+    paidBy: null,
+    expenseId: null,
+    note: "",
+    unpaidReason: "",
+    deleted: false,
+    deletedAt: null,
+    deletedBy: null,
+    deleteReason: null,
+    branchId: "main",
+    createdAt: new Date(),
+    createdBy: uid,
+    updatedAt: new Date(),
+    updatedBy: uid,
+    ...extra,
+  };
+}
+
+describe("payouts (Phase 8B)", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("payouts/p1").set(payout(ADMIN));
+      await ctx.firestore().doc("payouts/paid").set(
+        payout(ADMIN, { paid: true, paidBy: ADMIN, paidAt: new Date(), expenseId: "e1" })
+      );
+    });
+  });
+  it("admin only reads", async () => {
+    await assertSucceeds(asAdmin().doc("payouts/p1").get());
+    await assertSucceeds(asAdmin().collection("payouts").where("doctorId", "==", "d1").get());
+    await assertFails(asAlice().doc("payouts/p1").get());
+    await assertFails(asDoctor().doc("payouts/p1").get());
+    await assertFails(asAnon().doc("payouts/p1").get());
+  });
+  it("admin creates an unpaid payout with a consistent shape", async () => {
+    await assertSucceeds(asAdmin().doc("payouts/new").set(payout(ADMIN)));
+    await assertFails(asAlice().doc("payouts/x").set(payout(ALICE)));
+    await assertFails(asAdmin().doc("payouts/x").set(payout(ALICE)));
+    await assertFails(asAdmin().doc("payouts/x").set(payout(ADMIN, { doctorId: "" })));
+    await assertFails(asAdmin().doc("payouts/x").set(payout(ADMIN, { periodEnd: "2026-09-30" })));
+    await assertFails(asAdmin().doc("payouts/x").set(payout(ADMIN, { salaryAmount: -1, total: 399 })));
+    await assertFails(asAdmin().doc("payouts/x").set(payout(ADMIN, { total: 80000 })));
+    await assertFails(asAdmin().doc("payouts/x").set(payout(ADMIN, { shareBasis: "half" })));
+    await assertFails(asAdmin().doc("payouts/x").set(payout(ADMIN, { paid: true, paidBy: ADMIN, expenseId: "e" })));
+    await assertFails(asAdmin().doc("payouts/x").set(payout(ADMIN, { deleted: true })));
+    await assertFails(asAdmin().doc("payouts/x").set(payout(ADMIN, { branchId: "other" })));
+  });
+  it("mark paid needs an expenseId and paidBy = self; figures are locked", async () => {
+    await assertFails(asAdmin().doc("payouts/p1").update({ paid: true, updatedBy: ADMIN }));
+    await assertFails(
+      asAdmin().doc("payouts/p1").update({ paid: true, paidBy: ALICE, expenseId: "e2", updatedBy: ADMIN })
+    );
+    await assertSucceeds(
+      asAdmin().doc("payouts/p1").update({
+        paid: true,
+        paidAt: new Date(),
+        paidBy: ADMIN,
+        expenseId: "e2",
+        updatedBy: ADMIN,
+      })
+    );
+    await assertFails(asAdmin().doc("payouts/p1").update({ total: 1, updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("payouts/p1").update({ salaryAmount: 1, updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("payouts/p1").update({ periodEnd: "2026-11-30", updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("payouts/p1").update({ doctorId: "d2", updatedBy: ADMIN }));
+    await assertFails(asAdmin().doc("payouts/p1").update({ createdBy: ALICE, updatedBy: ADMIN }));
+    await assertFails(asAlice().doc("payouts/p1").update({ note: "x", updatedBy: ALICE }));
+  });
+  it("mark unpaid needs a reason; delete only while unpaid, with a reason", async () => {
+    await assertFails(
+      asAdmin().doc("payouts/paid").update({ paid: false, paidBy: null, paidAt: null, expenseId: null, updatedBy: ADMIN })
+    );
+    await assertSucceeds(
+      asAdmin().doc("payouts/paid").update({
+        paid: false,
+        paidBy: null,
+        paidAt: null,
+        expenseId: null,
+        unpaidReason: "Cheque bounced",
+        updatedBy: ADMIN,
+      })
+    );
+    await assertFails(asAdmin().doc("payouts/p1").update({ deleted: true, updatedBy: ADMIN }));
+    await assertSucceeds(
+      asAdmin().doc("payouts/p1").update({
+        deleted: true,
+        deleteReason: "Wrong month",
+        deletedBy: ADMIN,
+        deletedAt: new Date(),
+        updatedBy: ADMIN,
+      })
+    );
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("payouts/paid2").set(
+        payout(ADMIN, { paid: true, paidBy: ADMIN, paidAt: new Date(), expenseId: "e1" })
+      );
+    });
+    await assertFails(
+      asAdmin().doc("payouts/paid2").update({
+        deleted: true,
+        deleteReason: "x",
+        deletedBy: ADMIN,
+        deletedAt: new Date(),
+        updatedBy: ADMIN,
+      })
+    );
+  });
+  it("nobody deletes", async () => {
+    await assertFails(asAdmin().doc("payouts/p1").delete());
   });
 });
 

@@ -38,6 +38,8 @@ abstract final class VisitModel {
     operationId: map['operationId'] as String?,
     appointmentId: map['appointmentId'] as String?,
     deleted: (map['deleted'] as bool?) ?? false,
+    deleteReason: _s(map['deleteReason']),
+    editReason: _s(map['editReason']),
     branchId: (map['branchId'] as String?) ?? 'main',
   );
 

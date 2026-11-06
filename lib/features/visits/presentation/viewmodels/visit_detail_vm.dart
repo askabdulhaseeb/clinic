@@ -90,6 +90,21 @@ class VisitDetailViewModel extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  /// Admin soft delete with [reason] (Phase 8B). True on success; the
+  /// message is in [actionError] otherwise.
+  Future<bool> delete(String reason) async {
+    _actionError = null;
+    try {
+      await _repo.deleteVisit(visitId, reason: reason);
+      return true;
+    } on AppException catch (e) {
+      _actionError = e.message;
+      return false;
+    } finally {
+      if (!_disposed) notifyListeners();
+    }
+  }
+
   void _onVisit(Visit? v) {
     _visit = v;
     _loading = false;

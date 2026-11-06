@@ -22,6 +22,7 @@ import '../receipt/receipt_pdf.dart';
 import '../receipt/receipt_printer.dart';
 import '../viewmodels/visit_detail_vm.dart';
 import '../widgets/copies_stepper.dart';
+import '../widgets/delete_visit_dialog.dart';
 
 /// `/<role>/visits/:id`: visit card and receipt reprint (UI_DESIGN §4.3).
 class VisitDetailScreen extends StatelessWidget {
@@ -181,10 +182,32 @@ class VisitDetailView extends StatelessWidget {
                   : '${v.paymentMethod.label} (${v.paymentRef})',
             ),
             if (v.isFirstVisit) line('Patient', 'First visit'),
+            if (v.editReason.isNotEmpty) ...[
+              const Divider(height: 24),
+              line('Last correction', v.editReason),
+            ],
           ],
         ),
       ),
     );
+
+    final isAdmin = role == UserRole.admin;
+    final deletedBanner = !v.deleted
+        ? null
+        : Card(
+            color: scheme.errorContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text('Deleted: ${v.deleteReason}'),
+            ),
+          );
+
+    Future<void> deleteVisit() async {
+      final deleted = await showDeleteVisitDialog(context, vm);
+      if (!deleted || !context.mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Visit deleted')));
+    }
 
     final sale = vm.sale;
     final itemsCard = sale == null
@@ -227,43 +250,45 @@ class VisitDetailView extends StatelessWidget {
             ),
           );
 
-    final receiptCard = Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Receipt', style: text.titleMedium),
-            Text(
-              'No. ${ReceiptPdf.receiptNo(v)}',
-              style: text.bodyMedium?.copyWith(color: scheme.outline),
+    final receiptCard = v.deleted
+        ? const SizedBox.shrink()
+        : Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Receipt', style: text.titleMedium),
+                  Text(
+                    'No. ${ReceiptPdf.receiptNo(v)}',
+                    style: text.bodyMedium?.copyWith(color: scheme.outline),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Expanded(child: Text('Copies')),
+                      CopiesStepper(
+                        value: vm.copies,
+                        enabled: !vm.printing,
+                        onChanged: vm.setCopies,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    key: const Key('visit-print'),
+                    onPressed: vm.printing
+                        ? null
+                        : () => unawaited(
+                            vm.print(settings: settings, printer: printer),
+                          ),
+                    icon: const Icon(Icons.print_outlined, size: 18),
+                    label: const Text('Print receipt'),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Expanded(child: Text('Copies')),
-                CopiesStepper(
-                  value: vm.copies,
-                  enabled: !vm.printing,
-                  onChanged: vm.setCopies,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            FilledButton.icon(
-              key: const Key('visit-print'),
-              onPressed: vm.printing
-                  ? null
-                  : () => unawaited(
-                      vm.print(settings: settings, printer: printer),
-                    ),
-              icon: const Icon(Icons.print_outlined, size: 18),
-              label: const Text('Print receipt'),
-            ),
-          ],
-        ),
-      ),
-    );
+          );
 
     return Scaffold(
       body: Column(
@@ -272,18 +297,34 @@ class VisitDetailView extends StatelessWidget {
             title: 'Visit ${v.tokenLabel}',
             onBack: back,
             actions: [
-              TextButton.icon(
-                key: const Key('visit-sell'),
-                onPressed: () => context.go(
-                  AppRoutes.saleNewFor(
-                    role,
-                    patientId: v.patientId,
-                    visitId: v.id,
-                  ),
+              // Admin corrections (Phase 8B).
+              if (isAdmin && !v.deleted) ...[
+                TextButton.icon(
+                  key: const Key('visit-edit'),
+                  onPressed: () => context.go(AppRoutes.adminVisitEdit(v.id)),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('Edit'),
                 ),
-                icon: const Icon(Icons.add_shopping_cart_outlined, size: 18),
-                label: const Text('Sell items'),
-              ),
+                TextButton.icon(
+                  key: const Key('visit-delete'),
+                  onPressed: deleteVisit,
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('Delete'),
+                ),
+              ],
+              if (!v.deleted)
+                TextButton.icon(
+                  key: const Key('visit-sell'),
+                  onPressed: () => context.go(
+                    AppRoutes.saleNewFor(
+                      role,
+                      patientId: v.patientId,
+                      visitId: v.id,
+                    ),
+                  ),
+                  icon: const Icon(Icons.add_shopping_cart_outlined, size: 18),
+                  label: const Text('Sell items'),
+                ),
               TextButton.icon(
                 key: const Key('visit-open-patient'),
                 onPressed: () =>
@@ -305,6 +346,10 @@ class VisitDetailView extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              if (deletedBanner != null) ...[
+                                deletedBanner,
+                                const SizedBox(height: 12),
+                              ],
                               visitCard,
                               if (itemsCard != null) ...[
                                 const SizedBox(height: 12),
@@ -320,6 +365,10 @@ class VisitDetailView extends StatelessWidget {
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (deletedBanner != null) ...[
+                          deletedBanner,
+                          const SizedBox(height: 12),
+                        ],
                         visitCard,
                         if (itemsCard != null) ...[
                           const SizedBox(height: 12),

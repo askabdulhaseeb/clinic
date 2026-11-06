@@ -20,6 +20,8 @@ void main() {
         byDoctor: {
           'd1': FeeBucket(visits: 3, gross: 3000, discounts: 200, net: 2800),
         },
+        discountsByUser: {'rec-1': CountAmount(count: 1, amount: 200)},
+        discountsByReason: {'Old patient': CountAmount(count: 1, amount: 200)},
         salesTotal: 500,
         salesDiscounts: 50,
         salesByCategory: {'medicine': 500},
@@ -68,6 +70,10 @@ void main() {
       expect(s.salesTotal, 500);
       expect(s.expensesTotal, 500);
       expect(s.expensesByCategory, {'rent': 460, 'other': 40});
+      expect(s.discountsByUser, {
+        'rec-1': const CountAmount(count: 1, amount: 200),
+      });
+      expect(s.discountsByReason['Old patient']?.amount, 200);
       expect(s.netProfit, 3300);
       // Derived figures the dashboard tiles show.
       expect(s.revenue, 3800); // netFees + salesTotal

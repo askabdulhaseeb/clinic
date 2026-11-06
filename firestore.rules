@@ -12,6 +12,7 @@ rules_version = '2';
 // Phase 5B: `reports`, `operations`; doctors edit visit-type defaults.
 // Phase 7: `inventoryItems`, `stockMovements`, `suppliers`, `purchases`, `expenses`, `sales`.
 // Phase 8A: `expenses` corrections, `dailySummaries` (Admin read), `summaryEvents` (closed).
+// Phase 8B: `visits` corrections need an editReason, `payouts`.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -291,13 +292,18 @@ service cloud.firestore {
         && request.resource.data.deleted == false
         && inCallerBranch(request.resource.data.branchId)
         && createdByIsCaller();
+      // Phase 8B corrections (decided 6 Nov 2026): a change to the price,
+      // payment or doctor needs an editReason; the department is locked so
+      // the doctor can only move within it (token label and buckets stay).
       allow update: if
         (isAdmin()
           && visitShapeValid(request.resource.data)
           && request.resource.data.deleted is bool
           && (request.resource.data.deleted == false
               || isNonEmptyString(request.resource.data.deleteReason))
-          && !changedKeys().hasAny(['branchId', 'createdAt', 'createdAtLocal', 'createdBy'])
+          && !changedKeys().hasAny(['branchId', 'createdAt', 'createdAtLocal', 'createdBy', 'departmentId', 'departmentCode'])
+          && (!changedKeys().hasAny(['fee', 'discountAmount', 'discountReason', 'netAmount', 'paymentMethod', 'paymentRef', 'doctorId', 'doctorName'])
+              || isNonEmptyString(request.resource.data.editReason))
           && updatedByIsCaller())
         ||
         (isReception()
@@ -554,6 +560,56 @@ service cloud.firestore {
         && (request.resource.data.deleted == false
             ? !changedKeys().hasAny(['deleted', 'deletedAt', 'deletedBy', 'deleteReason'])
             : (isNonEmptyString(request.resource.data.deleteReason)
+               && request.resource.data.deletedBy == request.auth.uid))
+        && updatedByIsCaller();
+      allow delete: if false;
+    }
+
+    // ----- payouts/{payoutId}  (§4.21): Phase 8B ---------------------------
+    // Admin creates an unpaid payout whose figures never change afterwards.
+    // Mark paid stores the expense written in the same batch; mark unpaid
+    // and delete need a reason; a paid payout cannot be deleted.
+    function payoutShapeValid(p) {
+      return isNonEmptyString(p.doctorId)
+        && isNonEmptyString(p.doctorName)
+        && isNonEmptyString(p.periodStart)
+        && isNonEmptyString(p.periodEnd)
+        && p.periodEnd >= p.periodStart
+        && isNonNegativeInt(p.salaryAmount)
+        && isNonNegativeInt(p.grossFees)
+        && isNonNegativeInt(p.discounts)
+        && isNonNegativeInt(p.netFees)
+        && isNonNegativeInt(p.shareAmount)
+        && isNonNegativeInt(p.total)
+        && p.total == p.salaryAmount + p.shareAmount
+        && p.shareBasis in ['gross', 'net']
+        && p.sharePercent is number
+        && p.paid is bool
+        && p.deleted is bool;
+    }
+
+    match /payouts/{payoutId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && payoutShapeValid(request.resource.data)
+        && request.resource.data.paid == false
+        && request.resource.data.deleted == false
+        && inCallerBranch(request.resource.data.branchId)
+        && createdByIsCaller();
+      allow update: if isAdmin()
+        && payoutShapeValid(request.resource.data)
+        && !changedKeys().hasAny(['doctorId', 'doctorName', 'periodStart', 'periodEnd',
+             'salaryAmount', 'grossFees', 'discounts', 'netFees', 'shareBasis', 'sharePercent',
+             'shareAmount', 'total', 'branchId', 'createdAt', 'createdBy'])
+        && (request.resource.data.paid == false
+            || (isNonEmptyString(request.resource.data.expenseId)
+                && request.resource.data.paidBy == request.auth.uid))
+        && (!(resource.data.paid == true && request.resource.data.paid == false)
+            || isNonEmptyString(request.resource.data.unpaidReason))
+        && (request.resource.data.deleted == false
+            ? !changedKeys().hasAny(['deleted', 'deletedAt', 'deletedBy', 'deleteReason'])
+            : (resource.data.paid == false
+               && isNonEmptyString(request.resource.data.deleteReason)
                && request.resource.data.deletedBy == request.auth.uid))
         && updatedByIsCaller();
       allow delete: if false;

@@ -9,6 +9,7 @@ import '../../../../core/utils/tokens.dart';
 import '../../domain/doctor_periods.dart';
 import '../../domain/entities/visit.dart';
 import '../../domain/repositories/visits_repository.dart';
+import '../../domain/visit_correction_rules.dart';
 import '../../domain/visit_pricing.dart';
 import '../models/visit_model.dart';
 
@@ -253,6 +254,91 @@ class VisitsRepositoryImpl implements VisitsRepository {
       net: snap.getSum('netAmount')?.round() ?? 0,
     );
   });
+
+  // ----- Admin corrections (Phase 8B) ---------------------------------------
+
+  @override
+  Future<List<Visit>> visitsOn(String date) => _guard(() async {
+    final snap = await _visits.where('date', isEqualTo: date).get();
+    final list =
+        snap.docs.map((d) => VisitModel.fromMap(d.id, d.data())).toList()
+          ..sort(_newestFirst);
+    return List<Visit>.unmodifiable(list);
+  });
+
+  Future<Visit> _read(String visitId) async {
+    final snap = await _visits.doc(visitId).get();
+    final data = snap.data();
+    if (data == null) {
+      throw const AppException('Visit not found.', code: 'not-found');
+    }
+    return VisitModel.fromMap(snap.id, data);
+  }
+
+  @override
+  Future<void> correctVisit(String visitId, VisitCorrection c) => _guard(
+    () async {
+      final uid = _uid;
+      final visit = await _read(visitId);
+      if (visit.deleted) {
+        throw const AppException(
+          'This visit is deleted and cannot be edited.',
+          code: 'failed-precondition',
+        );
+      }
+      final problem = VisitCorrectionRules.validate(
+        visit: visit,
+        fee: c.fee,
+        discountAmount: c.discountAmount,
+        discountReason: c.discountReason,
+        paymentMethod: c.paymentMethod,
+        paymentRef: c.paymentRef,
+        doctor: c.doctor,
+        editReason: c.editReason,
+      );
+      if (problem != null) {
+        throw AppException(problem, code: 'invalid-argument');
+      }
+      await _visits.doc(visitId).update({
+        'fee': c.fee,
+        'discountAmount': c.discountAmount,
+        'discountReason': c.discountAmount > 0 ? c.discountReason.trim() : '',
+        'netAmount': VisitPricing.net(fee: c.fee, discount: c.discountAmount),
+        'paymentMethod': c.paymentMethod.key,
+        'paymentRef': c.paymentMethod.needsReference ? c.paymentRef.trim() : '',
+        'doctorId': c.doctor.id,
+        'doctorName': c.doctor.name,
+        'editReason': c.editReason.trim(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedBy': uid,
+      });
+    },
+  );
+
+  @override
+  Future<void> deleteVisit(String visitId, {required String reason}) =>
+      _guard(() async {
+        final uid = _uid;
+        final problem = VisitCorrectionRules.validateDelete(reason);
+        if (problem != null) {
+          throw AppException(problem, code: 'invalid-argument');
+        }
+        final visit = await _read(visitId);
+        if (visit.deleted) {
+          throw const AppException(
+            'This visit is already deleted.',
+            code: 'already-deleted',
+          );
+        }
+        await _visits.doc(visitId).update({
+          'deleted': true,
+          'deletedAt': FieldValue.serverTimestamp(),
+          'deletedBy': uid,
+          'deleteReason': reason.trim(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'updatedBy': uid,
+        });
+      });
 
   Future<T> _guard<T>(Future<T> Function() body) async {
     try {

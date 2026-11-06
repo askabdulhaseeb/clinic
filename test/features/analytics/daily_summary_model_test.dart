@@ -22,6 +22,9 @@ void main() {
       'discountsByUser': {
         'rec-1': {'count': 1, 'amount': 100},
       },
+      'discountsByReason': {
+        'Old patient': {'count': 1, 'amount': 100},
+      },
       'salesTotal': 300,
       'salesByCategory': {'frame': 300},
       'expensesTotal': 50,
@@ -35,6 +38,14 @@ void main() {
     expect(
       s.byDepartment['eye'],
       const FeeBucket(visits: 2, gross: 1500, discounts: 100, net: 1400),
+    );
+    expect(
+      s.discountsByUser['rec-1'],
+      const CountAmount(count: 1, amount: 100),
+    );
+    expect(
+      s.discountsByReason['Old patient'],
+      const CountAmount(count: 1, amount: 100),
     );
     expect(s.salesByCategory['frame'], 300);
     expect(s.salesDiscounts, 0);

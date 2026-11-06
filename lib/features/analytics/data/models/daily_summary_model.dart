@@ -16,6 +16,8 @@ abstract final class DailySummaryModel {
         byPayment: _ints(map['byPayment']),
         byDepartment: _buckets(map['byDepartment']),
         byDoctor: _buckets(map['byDoctor']),
+        discountsByUser: _counts(map['discountsByUser']),
+        discountsByReason: _counts(map['discountsByReason']),
         salesTotal: _int(map['salesTotal']),
         salesDiscounts: _int(map['salesDiscounts']),
         salesByCategory: _ints(map['salesByCategory']),
@@ -29,6 +31,18 @@ abstract final class DailySummaryModel {
   static Map<String, int> _ints(Object? v) {
     if (v is! Map) return const {};
     return {for (final e in v.entries) e.key.toString(): _int(e.value)};
+  }
+
+  static Map<String, CountAmount> _counts(Object? v) {
+    if (v is! Map) return const {};
+    return {
+      for (final e in v.entries)
+        if (e.value is Map)
+          e.key.toString(): CountAmount(
+            count: _int((e.value as Map)['count']),
+            amount: _int((e.value as Map)['amount']),
+          ),
+    };
   }
 
   static Map<String, FeeBucket> _buckets(Object? v) {

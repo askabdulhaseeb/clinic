@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../features/analytics/presentation/screens/dashboard_screen.dart';
+import '../../features/analytics/presentation/screens/reports_screen.dart';
 import '../../features/appointments/presentation/screens/appointments_screen.dart';
 import '../../features/appointments/presentation/screens/book_appointment_screen.dart';
 import '../../features/appointments/presentation/screens/doctor_appointments_screen.dart';
@@ -16,6 +17,8 @@ import '../../features/catalog/presentation/screens/doctor_form_screen.dart';
 import '../../features/catalog/presentation/screens/visit_type_form_screen.dart';
 import '../../features/finance/presentation/screens/expense_form_screen.dart';
 import '../../features/finance/presentation/screens/finance_screen.dart';
+import '../../features/finance/presentation/screens/new_payout_screen.dart';
+import '../../features/finance/presentation/screens/payout_detail_screen.dart';
 import '../../features/inventory/domain/entities/inventory_item.dart';
 import '../../features/inventory/presentation/screens/inventory_screen.dart';
 import '../../features/inventory/presentation/screens/item_detail_screen.dart';
@@ -36,11 +39,13 @@ import '../../features/settings/presentation/screens/initial_setup_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/settings/presentation/viewmodels/settings_controller.dart';
 import '../../features/users/presentation/screens/users_screen.dart';
+import '../../features/visits/presentation/screens/admin_visits_screen.dart';
 import '../../features/visits/presentation/screens/doctor_queue_screen.dart';
 import '../../features/visits/presentation/screens/doctor_summary_screen.dart';
 import '../../features/visits/presentation/screens/new_visit_screen.dart';
 import '../../features/visits/presentation/screens/queue_screen.dart';
 import '../../features/visits/presentation/screens/summary_screen.dart';
+import '../../features/visits/presentation/screens/visit_correction_screen.dart';
 import '../../features/visits/presentation/screens/visit_detail_screen.dart';
 import '../../features/visits/presentation/screens/visits_screen.dart';
 import 'app_routes.dart';
@@ -208,7 +213,8 @@ List<GoRoute> _patientRoutes(UserRole role) {
 }
 
 /// Visit pages under `/<role>/visits` (Phase 4), shared by Reception and
-/// Admin. `/admin/visits` itself stays a placeholder until Phase 8.
+/// Admin. `/admin/visits` itself is the Admin day view (Phase 8B) and the
+/// correction form sits at `/admin/visits/:id/edit`.
 List<GoRoute> _visitRoutes(UserRole role) {
   final base = AppRoutes.visitsFor(role);
   return [
@@ -284,6 +290,12 @@ List<GoRoute> _doctorRoutes() => [
 /// Admin pages below the sidebar destinations (Phase 2: catalog, setup;
 /// Phase 7A: inventory).
 List<GoRoute> _adminRoutes() => [
+  // Visit corrections (Phase 8B).
+  GoRoute(
+    path: AppRoutes.adminVisitEditPattern,
+    builder: (_, state) =>
+        VisitCorrectionScreen(visitId: state.pathParameters['id']!),
+  ),
   // Finance tabs and the expense form (Phase 8A).
   for (final tab in FinanceTab.values)
     GoRoute(
@@ -298,6 +310,16 @@ List<GoRoute> _adminRoutes() => [
     path: AppRoutes.adminExpenseEditPattern,
     builder: (_, state) =>
         ExpenseFormScreen(expenseId: state.pathParameters['id']!),
+  ),
+  // Payouts (Phase 8B): `new` before `:id`.
+  GoRoute(
+    path: AppRoutes.adminPayoutNew,
+    builder: (_, _) => const NewPayoutScreen(),
+  ),
+  GoRoute(
+    path: AppRoutes.adminPayoutPattern,
+    builder: (_, state) =>
+        PayoutDetailScreen(payoutId: state.pathParameters['id']!),
   ),
   // Inventory tabs; `new` routes are declared before `:id` patterns.
   for (final tab in InventoryTab.values)
@@ -396,6 +418,10 @@ Widget _screenFor(String path, String label) {
       return const PatientSearchScreen(role: UserRole.admin);
     case AppRoutes.receptionVisits:
       return const VisitsScreen(role: UserRole.reception);
+    case AppRoutes.adminVisits:
+      return const AdminVisitsScreen();
+    case AppRoutes.adminReports:
+      return const ReportsScreen();
     case AppRoutes.receptionQueue:
       return const QueueScreen(role: UserRole.reception);
     case AppRoutes.receptionSummary:

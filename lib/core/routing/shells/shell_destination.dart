@@ -164,6 +164,14 @@ abstract final class ShellDestinations {
       selectedIcon: Icons.account_balance_wallet,
       path: AppRoutes.adminFinance,
     ),
+    // Phase 8B: sidebar on desktop, under More in the phone bottom bar.
+    ShellDestination(
+      label: 'Reports',
+      icon: Icons.bar_chart_outlined,
+      selectedIcon: Icons.bar_chart,
+      path: AppRoutes.adminReports,
+      primary: false,
+    ),
     ShellDestination(
       label: 'Users',
       icon: Icons.manage_accounts_outlined,

@@ -112,6 +112,26 @@ describe("applyDailySummaryDeltaCore", () => {
     expect((await db.doc("summaryEvents/ev-9").get()).exists).toBe(false);
   });
 
+  it("a doctor change moves the doctor bucket (Phase 8B correction)", async () => {
+    const before = visit();
+    await applyDailySummaryDeltaCore(db, { collection: "visits", eventId: "ev-1", before: undefined, after: before });
+    const after = visit({ doctorId: "doc-2", fee: 1200, discountAmount: 0, discountReason: "", netAmount: 1200 });
+    await applyDailySummaryDeltaCore(db, { collection: "visits", eventId: "ev-2", before, after });
+    const s = await summary();
+    expect(s).toMatchObject({
+      visits: 1,
+      grossFees: 1200,
+      netFees: 1200,
+      byDoctor: {
+        "doc-1": { visits: 0, gross: 0, discounts: 0, net: 0 },
+        // `discounts` stays absent: it was never incremented for doc-2.
+        "doc-2": { visits: 1, gross: 1200, net: 1200 },
+      },
+      byDepartment: { "dep-eye": { visits: 1, gross: 1200, discounts: 0, net: 1200 } },
+      discountsByReason: { Staff: { count: 0, amount: 0 } },
+    });
+  });
+
   it("a soft delete removes the visit's contribution", async () => {
     const before = visit();
     await applyDailySummaryDeltaCore(db, { collection: "visits", eventId: "ev-1", before: undefined, after: before });

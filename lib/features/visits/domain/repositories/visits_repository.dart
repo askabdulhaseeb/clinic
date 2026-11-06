@@ -39,6 +39,28 @@ class VisitInput {
   final String? appointmentId;
 }
 
+/// What Admin may change on a saved visit (FEATURES §7.4, Phase 8B). The
+/// doctor must belong to the visit's department; the token stays.
+class VisitCorrection {
+  const VisitCorrection({
+    required this.fee,
+    required this.discountAmount,
+    required this.discountReason,
+    required this.paymentMethod,
+    required this.paymentRef,
+    required this.doctor,
+    required this.editReason,
+  });
+
+  final int fee;
+  final int discountAmount;
+  final String discountReason;
+  final PaymentMethod paymentMethod;
+  final String paymentRef;
+  final Doctor doctor;
+  final String editReason;
+}
+
 /// One day's visits plus the sync state of that listener, which drives the
 /// top-bar badge (FIREBASE_ARCHITECTURE §9).
 class DayVisits {
@@ -140,4 +162,17 @@ abstract class VisitsRepository {
     required String doctorId,
     required DateRange range,
   });
+
+  /// Every visit of one clinic day, newest first, soft-deleted ones
+  /// included (Admin's day view, Phase 8B). Read once, no listener.
+  Future<List<Visit>> visitsOn(String date);
+
+  /// Admin correction: rewrites fee, discount, net, payment and doctor and
+  /// records [VisitCorrection.editReason]. Throws `invalid-argument` for a
+  /// bad correction, `not-found`, or `failed-precondition` on a deleted
+  /// visit.
+  Future<void> correctVisit(String visitId, VisitCorrection correction);
+
+  /// Admin soft delete with a reason. Throws `already-deleted`.
+  Future<void> deleteVisit(String visitId, {required String reason});
 }

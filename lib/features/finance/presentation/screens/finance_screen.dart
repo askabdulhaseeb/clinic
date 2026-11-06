@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/app_routes.dart';
-import '../../../../core/routing/placeholder_screen.dart';
 import 'expenses_screen.dart';
+import 'payouts_screen.dart';
 
 /// Admin → Finance sections (UI_DESIGN §4.17); each tab is a route.
 enum FinanceTab {
@@ -44,11 +44,7 @@ class FinanceScreen extends StatelessWidget {
           Expanded(
             child: switch (tab) {
               FinanceTab.expenses => const ExpensesScreen(),
-              // Phase 8B.
-              FinanceTab.payouts => const PlaceholderScreen(
-                title: 'Payouts',
-                embedded: true,
-              ),
+              FinanceTab.payouts => const PayoutsScreen(),
             },
           ),
         ],
